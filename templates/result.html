@@ -1,12 +1,58 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Forecast Result</title>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Anonymous+Pro&display=swap" rel="stylesheet">
+    <!-- Plotly -->
     <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <style>
+        body {
+            background-color: #1e1e2f;
+            color: #dcdcdc;
+            font-family: 'Anonymous Pro', monospace;
+            margin: 0;
+            padding: 0;
+        }
+        h1 {
+            text-align: center;
+            font-size: 2rem;
+            font-weight: bold;
+            margin-top: 20px;
+            color: #ffffff;
+        }
+        .plot-container {
+            max-width: 90%;
+            margin: 40px auto;
+            padding: 20px;
+            background-color: #29293d;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.5);
+        }
+        .plot-container > div {
+            margin: 0 auto;
+        }
+        a {
+            display: block;
+            text-align: center;
+            margin: 20px auto;
+            text-decoration: none;
+            color: #5561ff;
+            font-weight: bold;
+            font-size: 1.2rem;
+        }
+        a:hover {
+            color: #3b47cc;
+        }
+    </style>
 </head>
 <body>
     <h1>Forecast Result</h1>
-    <div>{{ plot_html | safe }}</div>
+    <div class="plot-container">
+        <div>{{ plot_html | safe }}</div>
+    </div>
     <a href="/download/{{ forecast_file }}">Download Forecast CSV</a>
 </body>
 </html>

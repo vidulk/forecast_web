@@ -12,13 +12,26 @@ def prepare_data(data):
     Returns:
         TimeSeries: A darts TimeSeries object ready for modeling.
     """
+
+    # rename any column named time, date, or datetime to dt
+    data = data.rename(columns={'time': 'dt', 'date': 'dt', 'datetime': 'dt'})
+    data = data.rename(columns={'sales': 'value', 'rev': 'value', 'numm_orders': 'value', 'orders': 'value', 'units_sold': 'value', 'units': 'value', 'revenue': 'value'})
+    
     if 'dt' not in data.columns or 'value' not in data.columns:
         raise ValueError("DataFrame must contain 'dt' and 'value' columns.")
     
+    if len(data) == 0:
+        raise ValueError("DataFrame must contain at least one row of data.")
+    
+    if len(data) > 1000000:
+        raise ValueError("DataFrame must contain less than 1,000,000 rows of data.")
+    
     # Convert 'dt' to datetime and sort the data
     data['dt'] = pd.to_datetime(data['dt'], format='%d/%m/%y')
+    # reformat dt column to be in YYYY-MM-DD format
+    
+
     data = data.sort_values('dt')
-    print(data.head())
     # Convert to darts TimeSeries format
     series = TimeSeries.from_dataframe(
         df=data,
@@ -49,6 +62,8 @@ def forecast_with_theta(data, forecast_steps=10):
     forecast = model.predict(forecast_steps)
     
     # Convert forecast to DataFrame
-    forecast_df = forecast.pd_dataframe()
+    forecast_df = forecast.pd_dataframe().reset_index()
+    forecast_df['dt'] = forecast_df['dt'].dt.strftime('%Y-%m-%d')
     
     return forecast_df
+

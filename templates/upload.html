@@ -1,107 +1,114 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Time Series Forecast</title>
-    <!-- Google Fonts -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Anonymous+Pro:ital,wght@0,400;0,700;1,400;1,700&display=swap" rel="stylesheet">
-    <!-- Bootstrap CSS -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.1/dist/css/bootstrap.min.css" rel="stylesheet">
-    <!-- Custom Styles -->
+    <title>Forecast App</title>
+    <link href="https://fonts.googleapis.com/css2?family=Anonymous+Pro&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
         body {
-            background-color: #1e1e2f;
-            color: #dcdcdc;
-            font-family: 'Anonymous Pro', serif;
+            background-color: #121212;
+            color: #E0E0E0;
+            font-family: 'Anonymous Pro', monospace;
+            text-align: center;
+            margin: 0;
+            padding: 0;
         }
-        .container {
-            margin-top: 50px;
+        h1 {
+            color: #FFFFFF;
+            margin-top: 30px;
         }
-        .card {
+        .tab-content {
             background-color: #29293d;
-            border: none;
-            border-radius: 12px;
+            padding: 20px;
+            border-radius: 8px;
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.5);
         }
-        h4.card-title {
-            font-weight: 700;
-            font-size: 1.8rem;
-            color: #f5f5f5;
+        .nav-tabs .nav-link {
+            color: #E0E0E0;
         }
-        .btn-primary {
-            background-color: #5561ff;
-            border-color: #5561ff;
+        .nav-tabs .nav-link.active {
+            background-color: #64b5f6;
+            color: #121212;
         }
-        .btn-primary:hover {
-            background-color: #3b47cc;
-            border-color: #3b47cc;
+        a {
+            color: #64b5f6;
+            text-decoration: none;
         }
-        nav {
-            background-color: #29293d;
-            border-bottom: 1px solid #444;
-        }
-        nav .navbar-brand {
-            font-family: 'Anonymous Pro', serif;
-            font-size: 1.8rem;
-            font-weight: bold;
-            color: #ffffff !important;
-            margin: 0 auto;
-            text-align: center;
-            display: block;
-            width: 100%;
-        }
-        label {
-            color: #dcdcdc;
-        }
-        .form-control {
-            background-color: #2d2d3d;
-            color: #ffffff;
-            border: 1px solid #444;
-        }
-        .form-control:focus {
-            background-color: #2d2d3d;
-            color: #ffffff;
-            border-color: #5561ff;
-            box-shadow: 0 0 0 0.2rem rgba(85, 97, 255, 0.25);
-        }
-        .instructions {
-            margin-top: 20px;
-            text-align: center;
-            font-size: 1rem;
-            color: #b0b0b0;
+        a:hover {
+            text-decoration: underline;
         }
     </style>
 </head>
 <body>
-    <nav class="navbar navbar-light">
-        <a class="navbar-brand" href="#">Forecast App</a>
-    </nav>
-    <div class="container">
-        <div class="row justify-content-center">
-            <div class="col-md-6">
-                <div class="card">
-                    <div class="card-body">
-                        <h4 class="card-title mb-4">Upload Time Series Data</h4>
-                        <form action="/upload" method="POST" enctype="multipart/form-data">
-                            <div class="mb-3">
-                                <label for="file" class="form-label">Upload CSV File</label>
-                                <input type="file" class="form-control" id="file" name="file" required>
-                            </div>
-                            <button type="submit" class="btn btn-primary w-100">Submit</button>
-                        </form>
-                        <p class="instructions">
-                            Please upload a CSV file containing two columns: <strong>dt</strong> (date) and <strong>value</strong> (time series data).
-                            The system will generate a forecast for the data.
-                        </p>
-                    </div>
-                </div>
+    <h1>Forecast App</h1>
+    <div class="container mt-5">
+        <!-- Tabs Navigation -->
+        <ul class="nav nav-tabs" id="myTab" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="upload-tab" data-bs-toggle="tab" data-bs-target="#upload" type="button" role="tab" aria-controls="upload" aria-selected="true">Upload CSV</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="anonymise-tab" data-bs-toggle="tab" data-bs-target="#anonymise" type="button" role="tab" aria-controls="anonymise" aria-selected="false">Anonymising Your Data</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="about-tab" data-bs-toggle="tab" data-bs-target="#about" type="button" role="tab" aria-controls="about" aria-selected="false">About Me</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="support-tab" data-bs-toggle="tab" data-bs-target="#support" type="button" role="tab" aria-controls="support" aria-selected="false">Support Me</button>
+            </li>
+        </ul>
+
+        <!-- Tabs Content -->
+        <div class="tab-content mt-3">
+            <!-- Upload Tab -->
+            <div class="tab-pane fade show active" id="upload" role="tabpanel" aria-labelledby="upload-tab">
+                <h2>Upload Your CSV</h2>
+                <form action="/upload" method="post" enctype="multipart/form-data">
+                    <input type="file" name="file" class="form-control" accept=".csv" required>
+                    <label for="timesteps" class="mt-3">Forecast Steps Ahead:</label>
+                    <input type="number" name="timesteps" id="timesteps" class="form-control mb-3" min="1" value="10" required>
+                    <button type="submit" class="btn btn-primary">Submit</button>
+                </form>
+                <p class="mt-3">Upload a CSV file with two columns: one named <code>dt</code> for dates and another named <code>value</code> for the data to forecast.</p>
+            </div>
+
+            <!-- Anonymising Your Data Tab -->
+            <div class="tab-pane fade" id="anonymise" role="tabpanel" aria-labelledby="anonymise-tab">
+                <h2>Anonymising Your Data</h2>
+                <p>
+                    Anonymising your data is essential to maintain privacy while using public tools. 
+                    Here are a few simple steps:
+                </p>
+                <ul>
+                    <li>Remove any columns containing personally identifiable information (names, addresses, etc.).</li>
+                    <li>Replace unique identifiers (e.g., customer IDs) with random numbers.</li>
+                    <li>Scale sensitive numeric data (e.g., sales figures) to a standard range, such as 0-1, using a technique like Min-Max scaling.</li>
+                    <li>Test the anonymisation by ensuring the original data cannot be reconstructed.</li>
+                </ul>
+            </div>
+
+            <!-- About Me Tab -->
+            <div class="tab-pane fade" id="about" role="tabpanel" aria-labelledby="about-tab">
+                <h2>About Me</h2>
+                <p>
+                    Hi, I'm a data enthusiast passionate about making forecasting and data analysis accessible to everyone. 
+                    This app is designed to help you generate time series forecasts quickly and easily.
+                    Feel free to reach out with any feedback or suggestions!
+                </p>
+            </div>
+
+            <!-- Support Me Tab -->
+            <div class="tab-pane fade" id="support" role="tabpanel" aria-labelledby="support-tab">
+                <h2>Support Me</h2>
+                <p>
+                    If you find this app helpful, consider supporting my work! 
+                    Your contributions will help me maintain and improve this tool.
+                </p>
+                <a href="https://www.paypal.com/donate" class="btn btn-success" target="_blank">Donate</a>
             </div>
         </div>
     </div>
-    <!-- Bootstrap JS (Optional for interactive components) -->
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.1/dist/js/bootstrap.bundle.min.js"></script>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
