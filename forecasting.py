@@ -67,3 +67,50 @@ def forecast_with_theta(data, forecast_steps=10):
     
     return forecast_df
 
+def get_accuracy(forecast_df, actual_df):
+
+    from sklearn.model_selection import TimeSeriesSplit
+
+    # calc cross validation accuracy
+    n_splits = 5  
+    tscv = TimeSeriesSplit(n_splits=n_splits)
+
+    val_preds = []
+    val_scores = []
+    val_mapes = []
+    for fold, (train_index, val_index) in enumerate(tscv.split(X)):
+        print(f"Fold {fold + 1}")
+        
+        X_train, X_val = X.iloc[train_index], X.iloc[val_index]
+        y_train, y_val = y.iloc[train_index], y.iloc[val_index]
+        
+        train_data = lgb.Dataset(X_train, label=y_train, categorical_feature=categ_features)
+        val_data = lgb.Dataset(X_val, label=y_val, categorical_feature=categ_features)
+        
+        gbm = lgb.train(params, train_data, valid_sets=[val_data],)
+        y_pred = gbm.predict(X_val, num_iteration=gbm.best_iteration)
+        
+        y_pred[y_pred < 0] = 0     # Set negative predictions to 0
+        
+        # Calculate validation score
+        val_smape = 100 * np.mean(2 * np.abs(y_pred - y_val) / (np.abs(y_val) + np.abs(y_pred)))
+        try:
+            mape_pred = np.where(y_pred == 0, 0.01, y_pred)
+            mape_val = np.where(y_val == 0, 0.01, y_val)
+            val_mape = 100 * np.mean(np.abs((mape_pred - mape_val) / mape_val))
+        except ZeroDivisionError:
+            val_mape = 0
+
+        val_scores.append(val_smape)
+        val_mapes.append(val_mape)
+        # Store predictions
+        val_preds.extend(y_pred)
+
+    # Calculate the average validation score across folds
+    avg_val_score = np.mean(val_scores)
+    print("Average Validation SMAPE:", avg_val_score)
+
+    avg_val_mape = np.mean(val_mapes)
+    print("Average Validation MAPE:", avg_val_mape)
+    
+    return accuracy

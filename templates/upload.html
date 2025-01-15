@@ -48,7 +48,7 @@
                 <button class="nav-link active" id="upload-tab" data-bs-toggle="tab" data-bs-target="#upload" type="button" role="tab" aria-controls="upload" aria-selected="true">Upload CSV</button>
             </li>
             <li class="nav-item" role="presentation">
-                <button class="nav-link" id="anonymise-tab" data-bs-toggle="tab" data-bs-target="#anonymise" type="button" role="tab" aria-controls="anonymise" aria-selected="false">Anonymising Your Data</button>
+                <button class="nav-link" id="anonymise-tab" data-bs-toggle="tab" data-bs-target="#anonymise" type="button" role="tab" aria-controls="anonymise" aria-selected="false">How it Works?</button>
             </li>
             <li class="nav-item" role="presentation">
                 <button class="nav-link" id="about-tab" data-bs-toggle="tab" data-bs-target="#about" type="button" role="tab" aria-controls="about" aria-selected="false">About Me</button>
@@ -72,18 +72,37 @@
                 <p class="mt-3">Upload a CSV file with two columns: one named <code>dt</code> for dates and another named <code>value</code> for the data to forecast.</p>
             </div>
 
-            <!-- Anonymising Your Data Tab -->
+            <!-- How it Works? Tab -->
             <div class="tab-pane fade" id="anonymise" role="tabpanel" aria-labelledby="anonymise-tab">
-                <h2>Anonymising Your Data</h2>
-                <p>
-                    Anonymising your data is essential to maintain privacy while using public tools. 
-                    Here are a few simple steps:
-                </p>
+                <h2>How it Works?</h2>
                 <ul>
-                    <li>Remove any columns containing personally identifiable information (names, addresses, etc.).</li>
-                    <li>Replace unique identifiers (e.g., customer IDs) with random numbers.</li>
-                    <li>Scale sensitive numeric data (e.g., sales figures) to a standard range, such as 0-1, using a technique like Min-Max scaling.</li>
-                    <li>Test the anonymisation by ensuring the original data cannot be reconstructed.</li>
+                    <p>
+                        Based on the data you provide, a combined statistical & Machine Learning model is trained to forecast the future values of your data.
+                        This model is then used to generate a forecast for the next <code>steps</code> ahead.
+                        
+                        We automatically add any data the alogrithm feels is relevant and may improve your model such as seasonality, trends, holidays, etc.
+
+                        The forecast is then displayed in a plot, along with the original data.
+                        You can download the forecast as a CSV file for further analysis.
+                        None of your data is stored or shared with anyone. As soon as we recieve your data, we annonymise it and generate a forecast.
+                        We recommend for your peace of mind that you anonymise your data before uploading it to this app.
+                    </p>
+                    <p>
+                        The easiest way to anonymise your data is to divide your numerical columns by the maximum value in that column.
+                        This will ensure that all values are between 0 and 1, which is a standard range for forecasting 
+                        and wont affect the accuracy of the model, while still anonymising your data.
+                        Then, when you recieve your forecast, you can multiply each value by the maximum value you divided by at first to get the original value.
+                    </p>
+                    <p>
+                        A forecasting model is only as good as the data it is trained on. 
+                        If you would like to improve the accuracy of your forecasts, the easiest things to do are 
+                        to clean the data you provide, make sure it is as correct as possible and to provide more relevant data.
+                        In terms of measuring the accuracy of your forecast, as seen on the final page it is essential to compare it to a baseline forecast.
+                        I have provided some common baseline accuracy measures but feel free to use your own heuristics and metrics to compare. 
+                        In other words, compare it to what you think would have been sold in the future, 
+                        note it down somewhere and compare it to the model accuracy over a period of time.
+                    </p>
+
                 </ul>
             </div>
 
@@ -91,9 +110,14 @@
             <div class="tab-pane fade" id="about" role="tabpanel" aria-labelledby="about-tab">
                 <h2>About Me</h2>
                 <p>
-                    Hi, I'm a data enthusiast passionate about making forecasting and data analysis accessible to everyone. 
+                    Hi, My name is Vidul Khanna and I'm a data scientist currently working on Forecasting & other Data stuff at a Unicorn in 
+                    Bangalore, India. When Learning about Forecasting, there is alot of information out there, but I found it difficult to find a 
+                    simple and easy to use tool that would allow me to generate forecasts quickly and easily. 
                     This app is designed to help you generate time series forecasts quickly and easily.
-                    Feel free to reach out with any feedback or suggestions!
+
+                    If you have any questions or suggestions, please don't hesitate to reach out to me!
+                    My email address is <a href="mailto:forecasting@data.dev">forecasting@data.dev</a>.
+
                 </p>
             </div>
 
@@ -102,9 +126,9 @@
                 <h2>Support Me</h2>
                 <p>
                     If you find this app helpful, consider supporting my work! 
-                    Your contributions will help me maintain and improve this tool.
+                    Your contributions will really help me maintain and improve this tool.
                 </p>
-                <a href="https://www.paypal.com/donate" class="btn btn-success" target="_blank">Donate</a>
+                <a href="https://buymeacoffee.com/vidulk" class="btn btn-success" target="_blank">Donate</a>
             </div>
         </div>
     </div>
