@@ -3,7 +3,7 @@ import pandas as pd
 import plotly.graph_objs as go
 from plotly.io import to_html
 from flask import Flask, render_template, request, redirect, url_for, send_file
-from forecasting import forecast_with_theta
+from forecasting import forecast_with_theta, get_accuracy
 from datetime import timedelta
 
 app = Flask(__name__)
@@ -53,6 +53,9 @@ def forecast(filename):
                              y=forecast_df['value'], mode='lines', name='Forecast', line=dict(dash='dash')))
     fig.update_layout(title='Forecast vs Original', xaxis_title='Index', yaxis_title='Value')
     
+    # predicted score on future data
+    pred_score = get_accuracy(forecast_df)
+
     # Add config to hide the mode bar
     config = {
         'displayModeBar': False,  # Hides the toolbar completely
