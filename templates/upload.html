@@ -65,8 +65,11 @@
                 <h2>Upload Your CSV</h2>
                 <form action="/upload" method="post" enctype="multipart/form-data">
                     <input type="file" name="file" class="form-control" accept=".csv" required>
-                    <label for="timesteps" class="mt-3">Forecast Steps Ahead:</label>
-                    <input type="number" name="timesteps" id="timesteps" class="form-control mb-3" min="1" value="10" required>
+                    
+                    <!-- Change 'timesteps' to 'steps' -->
+                    <label for="steps" class="mt-3">Forecast Steps Ahead:</label>
+                    <input type="number" name="steps" id="steps" class="form-control mb-3" min="1" value="10" required>
+                    
                     <button type="submit" class="btn btn-primary">Submit</button>
                 </form>
                 <p class="mt-3">Upload a CSV file with two columns: one named <code>dt</code> for dates and another named <code>value</code> for the data to forecast.</p>

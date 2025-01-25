@@ -3,7 +3,7 @@ import pandas as pd
 import plotly.graph_objs as go
 from plotly.io import to_html
 from flask import Flask, render_template, request, redirect, url_for, send_file
-from forecasting import forecast_with_theta, get_accuracy
+from forecasting import forecast_with_theta, baseline_forecast
 from datetime import timedelta
 
 app = Flask(__name__)
@@ -37,14 +37,13 @@ def forecast(filename):
     steps = request.args.get('steps', default=10, type=int)  # Default to 10 if not specified
     filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
     df = pd.read_csv(filepath)
-
+    df['dt'] = pd.to_datetime(df['dt'], format='%d/%m/%y')
     # Placeholder for your forecasting logic
     try:
         forecast_df = forecast_with_theta(df, forecast_steps=steps)
     except Exception as e:
         return f"An error occurred during forecasting: {e}", 500
-
-
+ 
     # Create an interactive Plo
     fig = go.Figure()
     df['dt'] = df['dt'].dt.strftime('%Y-%m-%d')
@@ -54,7 +53,9 @@ def forecast(filename):
     fig.update_layout(title='Forecast vs Original', xaxis_title='Index', yaxis_title='Value')
     
     # predicted score on future data
-    pred_score = get_accuracy(forecast_df)
+    base_forecast = baseline_forecast(df, forecast_steps=steps)
+    fig.add_trace(go.Scatter(x=base_forecast['dt'], 
+                             y=base_forecast['value'], mode='lines', name='Baseline Forecast', line=dict(dash='dash')))
 
     # Add config to hide the mode bar
     config = {
@@ -65,7 +66,7 @@ def forecast(filename):
     forecast_path = os.path.join(app.config['UPLOAD_FOLDER'], f'forecast_{filename}')
     forecast_df.to_csv(forecast_path, index=False)
 
-    return render_template('result.html', plot_html=plot_html, forecast_file=forecast_path)
+    return render_template('result.html', plot_html=plot_html, forecast_file=forecast_path, expected_accuracy=base_forecast)
 
 @app.route('/download/<path:forecast_file>')
 def download_file(forecast_file):
