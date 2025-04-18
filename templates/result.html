@@ -65,9 +65,10 @@
     </div>
     <div class="accuracy-details">
         <h2>Accuracy Details</h2>
-        <p><strong>Expected Accuracy:</strong> {{ expected_accuracy }}%</p>
-        <p><strong>Baseline Accuracy:</strong> {{ baseline_accuracy }}%</p>
+        <p><strong>Expected Accuracy (Avg % Error):</strong> {{ expected_accuracy }}%</p>
+        <p><strong>Baseline Accuracy (Avg % Error):</strong> {{ baseline_accuracy }}%</p>
         <p>The expected accuracy is based on cross-validated historical data, while the baseline accuracy represents the average of the last 4 same days historically based on the training data.</p>
+        <p></p>
     </div>
     <a href="/download/{{ forecast_file }}">Download Forecast CSV</a>
 </body>

@@ -3,7 +3,7 @@ import pandas as pd
 import plotly.graph_objs as go
 from plotly.io import to_html
 from flask import Flask, render_template, request, redirect, url_for, send_file
-from forecasting import forecast_with_theta, baseline_forecast
+from forecasting import forecast_with_theta, baseline_forecast, calculate_cv_accuracy, prepare_data
 from datetime import timedelta
 
 app = Flask(__name__)
@@ -39,10 +39,11 @@ def forecast(filename):
     df = pd.read_csv(filepath)
     df['dt'] = pd.to_datetime(df['dt'], format='%d/%m/%y')
     # Placeholder for your forecasting logic
-    try:
-        forecast_df = forecast_with_theta(df, forecast_steps=steps)
-    except Exception as e:
-        return f"An error occurred during forecasting: {e}", 500
+    # try:
+    prepped_data = prepare_data(df.copy())
+    forecast_df = forecast_with_theta(prepped_data, forecast_steps=steps)
+    # except Exception as e:
+    #     return f"An error occurred during forecasting: {e}", 500
  
     # Create an interactive Plo
     fig = go.Figure()
@@ -53,7 +54,7 @@ def forecast(filename):
     fig.update_layout(title='Forecast vs Original', xaxis_title='Index', yaxis_title='Value')
     
     # predicted score on future data
-    base_forecast = baseline_forecast(df, forecast_steps=steps)
+    base_forecast = baseline_forecast(prepped_data, forecast_steps=steps)
     fig.add_trace(go.Scatter(x=base_forecast['dt'], 
                              y=base_forecast['value'], mode='lines', name='Baseline Forecast', line=dict(dash='dash')))
 
@@ -65,8 +66,24 @@ def forecast(filename):
 
     forecast_path = os.path.join(app.config['UPLOAD_FOLDER'], f'forecast_{filename}')
     forecast_df.to_csv(forecast_path, index=False)
+    
+    expected_accuracy = round(calculate_cv_accuracy(
+        prepped_data,
+        forecast_with_theta,
+        forecast_horizon=steps,
+        num_folds=2,
+        stride=1
+    )['mape'],3)
 
-    return render_template('result.html', plot_html=plot_html, forecast_file=forecast_path, expected_accuracy=base_forecast)
+    baseline_accuracy = round(calculate_cv_accuracy(
+        prepped_data,
+        baseline_forecast,
+        forecast_horizon=steps,
+        num_folds=2,
+        stride=1
+    )['mape'],3)
+
+    return render_template('result.html', plot_html=plot_html, forecast_file=forecast_path, expected_accuracy=expected_accuracy, baseline_accuracy=baseline_accuracy)
 
 @app.route('/download/<path:forecast_file>')
 def download_file(forecast_file):
