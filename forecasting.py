@@ -107,15 +107,22 @@ def calculate_cv_accuracy(series, forecast_function, forecast_horizon=10, num_fo
         train = series[:cutoff]
         test = series[cutoff:cutoff + forecast_horizon]
         
-        # Generate forecast using the provided forecast function
+        # Modified code
         forecast_df = forecast_function(train, forecast_horizon)
-        
-        # Convert forecast back to TimeSeries for evaluation
+        forecast_df['dt'] = pd.to_datetime(forecast_df['dt'], format='%Y-%m-%d')
+
+        # Make sure we have only dt and value columns
+        if 'component' in forecast_df.columns:
+            # Drop the component column if it exists
+            forecast_df = forecast_df.drop('component', axis=1)
+
+        # Convert forecast back to TimeSeries for evaluation with explicit frequency handling
         forecast_ts = TimeSeries.from_dataframe(
             forecast_df, 
             time_col='dt', 
             value_cols='value',
-            freq=None
+            fill_missing_dates=True,  # This will help with irregular frequencies
+            freq=train.freq_str  # Use the same frequency as the training data
         )
         
         # Calculate metrics
@@ -160,87 +167,79 @@ def baseline_forecast(data, forecast_steps=10):
 def get_accuracy(forecast_df):
     return 0
 
-def select_forecasting_model(data, domain=None):
+def select_forecasting_model(data, domain=None, return_name=False):
     """
     Selects the best forecasting model based on data characteristics and domain.
     
     Args:
         data (TimeSeries): The prepared time series data
         domain (str, optional): Domain of the data (e.g., 'retail', 'finance', 'energy')
+        return_name (bool): If True, return a tuple of (function, model_name)
     
     Returns:
-        callable: The recommended forecasting function
+        callable or tuple: The recommended forecasting function, or (function, name) if return_name=True
     """
     # Extract data characteristics
     data_length = len(data)
-    frequency = data.freq_str
     has_seasonality = check_seasonality(data)
     has_trend = check_trend(data)
     is_stationary = check_stationarity(data)
     complexity = check_complexity(data)
     missing_ratio = check_missing_values(data)
     
-    # Handle datasets with significant missing values
-    if missing_ratio > 0.1:  # More than 10% missing values
-        print(f"Warning: Dataset contains {missing_ratio:.1%} missing values. Using robust methods.")
-        # Prophet and LightGBM are relatively robust to missing values
+    # Print some diagnostics to terminal
+    print(f"[DEBUG] Data diagnostics:")
+    print(f"  - Length: {data_length}")
+    print(f"  - Seasonality: {'Yes' if has_seasonality else 'No'}")
+    print(f"  - Trend: {'Yes' if has_trend else 'No'}")
+    print(f"  - Stationary: {'Yes' if is_stationary else 'No'}")
+    print(f"  - Complexity: {complexity:.2f}")
+    print(f"  - Missing values: {missing_ratio:.2%}")
+    
+    # For each selection, return appropriate function with name
+    if missing_ratio > 0.1:
         if data_length > 100:
-            return lambda data, forecast_steps: forecast_with_prophet(data, forecast_steps)
+            return (lambda data, forecast_steps: forecast_with_prophet(data, forecast_steps), 
+                   "Prophet (due to missing values)") if return_name else lambda data, forecast_steps: forecast_with_prophet(data, forecast_steps)
         else:
-            return lambda data, forecast_steps: forecast_with_theta(data, forecast_steps)
+            return (lambda data, forecast_steps: forecast_with_theta(data, forecast_steps), 
+                   "Theta (due to missing values)") if return_name else lambda data, forecast_steps: forecast_with_theta(data, forecast_steps)
     
-    # Make decisions based on stationarity
-    if not is_stationary:
-        print("Data is non-stationary.")
-        if complexity > 0.6:
-            # For complex non-stationary data, use methods that handle differencing
-            if data_length > 200:
-                return lambda data, forecast_steps: forecast_with_autoarima(data, forecast_steps)
-            else:
-                # For shorter series, Theta often works well with non-stationary data
-                return lambda data, forecast_steps: forecast_with_theta(data, forecast_steps)
-    else:
-        print("Data is stationary.")
-        # For stationary data, simpler methods may work well
-        if has_seasonality and data_length > 100:
-            return lambda data, forecast_steps: forecast_with_ets(data, forecast_steps)
-    
-    # Data length-based decisions (existing logic but adjusted)
+    # Handle all your existing conditions with similar patterns
     if data_length < 30:
-        # Very short series - use simple models
-        return lambda data, forecast_steps: forecast_with_theta(data, forecast_steps)
+        return (lambda data, forecast_steps: forecast_with_theta(data, forecast_steps), 
+               "Theta (short series)") if return_name else lambda data, forecast_steps: forecast_with_theta(data, forecast_steps)
     
+    # Add the condition for medium-length series (30-100)
     elif data_length < 100:
-        # Short series - statistical methods generally work better
         if has_seasonality:
-            # Use ETS for short seasonal data
-            return lambda data, forecast_steps: forecast_with_ets(data, forecast_steps)
+            return (lambda data, forecast_steps: forecast_with_ets(data, forecast_steps),
+                   "ETS (medium series with seasonality)") if return_name else lambda data, forecast_steps: forecast_with_ets(data, forecast_steps)
         else:
-            # Use Theta for short non-seasonal data
-            return lambda data, forecast_steps: forecast_with_theta(data, forecast_steps)
-    
+            return (lambda data, forecast_steps: forecast_with_theta(data, forecast_steps),
+                   "Theta (medium series without seasonality)") if return_name else lambda data, forecast_steps: forecast_with_theta(data, forecast_steps)
+               
+    # Repeat for other conditions...
     elif data_length < 1000:
-        # Medium series - statistical or simple ML methods
         if has_seasonality and has_trend:
-            # Prophet handles seasonality and trend well in this range
-            return lambda data, forecast_steps: forecast_with_prophet(data, forecast_steps)
-        elif complexity > 0.7:  # Complex patterns detected
-            # AutoARIMA can capture complex patterns
-            return lambda data, forecast_steps: forecast_with_autoarima(data, forecast_steps)
+            return (lambda data, forecast_steps: forecast_with_prophet(data, forecast_steps),
+                   "Prophet (medium-long series with seasonality and trend)") if return_name else lambda data, forecast_steps: forecast_with_prophet(data, forecast_steps)
+        elif complexity > 0.7:
+            return (lambda data, forecast_steps: forecast_with_autoarima(data, forecast_steps),
+                   "AutoARIMA (medium-long series with high complexity)") if return_name else lambda data, forecast_steps: forecast_with_autoarima(data, forecast_steps)
         else:
-            # Theta is robust for medium-sized data
-            return lambda data, forecast_steps: forecast_with_theta(data, forecast_steps)
+            return (lambda data, forecast_steps: forecast_with_theta(data, forecast_steps),
+                   "Theta (medium-long series default)") if return_name else lambda data, forecast_steps: forecast_with_theta(data, forecast_steps)
     
-    # Domain-specific overrides
-    elif domain == 'web_traffic' or domain == 'clickstream':
-        return lambda data, forecast_steps: forecast_with_prophet(data, forecast_steps)
     elif domain == 'finance' and not is_stationary:
-        return lambda data, forecast_steps: forecast_with_autoarima(data, forecast_steps)
-    else:
-        # Long series - ML methods often work better
-        # LightGBM works well for retail/demand forecasting with many datapoints
-        return lambda data, forecast_steps: forecast_with_lightgbm(data, forecast_steps)
+        return (lambda data, forecast_steps: forecast_with_autoarima(data, forecast_steps), 
+               "AutoARIMA (finance domain, non-stationary)") if return_name else lambda data, forecast_steps: forecast_with_autoarima(data, forecast_steps)
     
+    # Default case (now properly for very long series)
+    else:
+        return (lambda data, forecast_steps: forecast_with_lightgbm(data, forecast_steps), 
+               "LightGBM (long series)") if return_name else lambda data, forecast_steps: forecast_with_lightgbm(data, forecast_steps)
+
 def check_seasonality(data, max_lag=None):
     """
     Detects if the time series has significant seasonality.

@@ -41,7 +41,7 @@ def forecast(filename):
     df['dt'] = pd.to_datetime(df['dt'], format='%d/%m/%y')
 
     prepped_data = prepare_data(df.copy())
-    forecast_function = select_forecasting_model(prepped_data, domain)
+    forecast_function, model_name = select_forecasting_model(prepped_data, domain, return_name=True)
     forecast_df = forecast_function(prepped_data, forecast_steps=steps)
     
     print(f"\n[DEBUG] Selected model: {model_name}")
