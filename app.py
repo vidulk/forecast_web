@@ -3,7 +3,7 @@ import pandas as pd
 import plotly.graph_objs as go
 from plotly.io import to_html
 from flask import Flask, render_template, request, redirect, url_for, send_file
-from forecasting import forecast_with_theta, baseline_forecast, calculate_cv_accuracy, prepare_data
+from forecasting import select_forecasting_model, baseline_forecast, calculate_cv_accuracy, prepare_data
 from datetime import timedelta
 
 app = Flask(__name__)
@@ -35,16 +35,20 @@ def upload_file():
 @app.route('/forecast/<filename>')
 def forecast(filename):
     steps = request.args.get('steps', default=10, type=int)  # Default to 10 if not specified
+    domain = request.args.get('domain', default=None)
     filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
     df = pd.read_csv(filepath)
     df['dt'] = pd.to_datetime(df['dt'], format='%d/%m/%y')
-    # Placeholder for your forecasting logic
-    # try:
+
     prepped_data = prepare_data(df.copy())
-    forecast_df = forecast_with_theta(prepped_data, forecast_steps=steps)
-    # except Exception as e:
-    #     return f"An error occurred during forecasting: {e}", 500
- 
+    forecast_function = select_forecasting_model(prepped_data, domain)
+    forecast_df = forecast_function(prepped_data, forecast_steps=steps)
+    
+    print(f"\n[DEBUG] Selected model: {model_name}")
+    print(f"[DEBUG] Data length: {len(prepped_data)}")
+    print(f"[DEBUG] Domain: {domain if domain else 'Not specified'}")
+    print(f"[DEBUG] Forecast steps: {steps}\n")
+
     # Create an interactive Plo
     fig = go.Figure()
     df['dt'] = df['dt'].dt.strftime('%Y-%m-%d')
@@ -69,7 +73,7 @@ def forecast(filename):
     
     expected_accuracy = round(calculate_cv_accuracy(
         prepped_data,
-        forecast_with_theta,
+        forecast_function,
         forecast_horizon=steps,
         num_folds=2,
         stride=1
