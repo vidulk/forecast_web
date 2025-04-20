@@ -42,7 +42,7 @@ def process():
     date_column = request.form.get('date_column', 'dt')
     date_format = request.form.get('date_format', 'DD/MM/YYYY')
     value_column = request.form.get('value_column', 'value')
-    steps = request.form.get('steps', type=int, default=10)
+    steps = request.form.get('steps', type=int, default=7)
     
     if not steps or steps <= 0:
         return "Invalid timesteps value", 400
@@ -52,6 +52,7 @@ def process():
     # Read the CSV using the specified column names
     df = pd.read_csv(filepath)
     
+    print(date_column, date_format, value_column)
     # Rename columns to the expected format
     if date_column != 'dt':
         df = df.rename(columns={date_column: 'dt'})
@@ -79,7 +80,8 @@ def forecast(filename):
     domain = request.args.get('domain', default=None)
     filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
     df = pd.read_csv(filepath)
-
+    print(df.columns)
+    
     prepped_data = prepare_data(df.copy())
     forecast_function, model_name = select_forecasting_model(prepped_data, domain, return_name=True)
     forecast_df = forecast_function(prepped_data, forecast_steps=steps)
