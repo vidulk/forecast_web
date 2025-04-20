@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Configure Forecast - Forecast App</title>
+    <link rel="icon" href="static/full_logo.png" type="image/png">
+    <link href="https://fonts.googleapis.com/css2?family=Anonymous+Pro&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+        background-color: #0E121A; 
+        color: #E0E0E0;
+        font-family: 'Anonymous Pro', monospace;
+        text-align: center;
+        margin: 0;
+        padding: 0;
+        }
+        h1 {
+            color: #FFFFFF;
+            margin-top: 30px;
+        }
+        .main-content {
+            background-color: #161b22; 
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.5);
+            margin-top: 20px;
+        }
+        a {
+            color: #64b5f6;
+            text-decoration: none;
+        }
+        a:hover {
+            text-decoration: underline;
+        }
+        .logo-container {
+            position: absolute;
+            top: 10px;
+            left: 20px;
+        }
+        .logo {
+            height: 60px;
+            width: auto;
+            background-color: #0E121A;
+        }
+        .text-justify {
+            text-align: justify;
+        }
+        .form-label {
+            font-weight: bold;
+            margin-top: 15px;
+        }
+        .example-text {
+            font-style: italic;
+            font-size: 0.9rem;
+            color: #a0a0a0;
+        }
+        @media (max-width: 768px) {
+            .logo {
+                height: 40px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Logo in the top left -->
+    <div class="logo-container">
+        <img src="/static/logo.png" alt="Forecast App Logo" class="logo">
+    </div>
+
+    <h1>
+        <img src="/static/full_logo.png" alt="Forecast App" style="height: 100px; width: auto;">
+    </h1>
+    
+    <div class="container mt-5">
+        <div class="main-content">
+            <h2>Configure Your Forecast</h2>
+            
+            <div class="alert alert-info">
+                <strong>File uploaded successfully!</strong> Now, let's configure your forecast settings.
+            </div>
+            
+            <form action="/process" method="post">
+                <input type="hidden" name="filename" value="{{ filename }}">
+                
+                <div class="row mb-4">
+                    <div class="col-md-6">
+                        <label for="date_column" class="form-label">Date Column Name:</label>
+                        <input type="text" name="date_column" id="date_column" class="form-control" 
+                               value="dt" placeholder="dt, date, time, etc." required>
+                    </div>
+                    
+                    <div class="col-md-6">
+                        <label for="date_format" class="form-label">Date Format:</label>
+                        <input type="text" name="date_format" id="date_format" class="form-control" 
+                               value="DD/MM/YYYY" placeholder="DD/MM/YYYY" required>
+                        <div class="form-text text-light">
+                            Examples: DD/MM/YYYY, MM/DD/YYYY, YYYY-MM-DD
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="row mb-4">
+                    <div class="col-md-6">
+                        <label for="value_column" class="form-label">Target Column Name:</label>
+                        <input type="text" name="value_column" id="value_column" class="form-control" 
+                               value="value" placeholder="value, sales, revenue, etc." required>
+                    </div>
+                    
+                    <div class="col-md-6">
+                        <label for="steps" class="form-label">Forecast Horizon (Steps Ahead):</label>
+                        <input type="number" name="steps" id="steps" class="form-control" 
+                               min="1" value="10" required>
+                        <div class="form-text text-light example-text">
+                            Example: If your data is daily and you want to predict 7 days ahead, enter 7.
+                            <br>If monthly data and you want to predict 3 months ahead, enter 3.
+                        </div>
+                    </div>
+                </div>
+                
+                <button type="submit" class="btn btn-primary mt-3">Generate Forecast</button>
+            </form>
+            
+            <div class="mt-4">
+                <p class="text-justify">
+                    <strong>Note:</strong> Your data is being processed securely and will not be stored or shared. 
+                    For optimal results, ensure your data is clean and consistent.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

@@ -12,10 +12,9 @@ def prepare_data(data):
     Returns:
         TimeSeries: A darts TimeSeries object ready for modeling.
     """
-
     # rename any column named time, date, or datetime to dt
     data = data.rename(columns={'time': 'dt', 'date': 'dt', 'datetime': 'dt'})
-    data = data.rename(columns={'sales': 'value', 'rev': 'value', 'numm_orders': 'value', 'orders': 'value', 'units_sold': 'value', 'units': 'value', 'revenue': 'value'})
+    data = data.rename(columns={'sales': 'value', 'rev': 'value', 'num_orders': 'value', 'orders': 'value', 'units_sold': 'value', 'units': 'value', 'revenue': 'value'})
     
     if 'dt' not in data.columns or 'value' not in data.columns:
         raise ValueError("DataFrame must contain 'dt' and 'value' columns.")
@@ -26,15 +25,6 @@ def prepare_data(data):
     if len(data) > 1000000:
         raise ValueError("DataFrame must contain less than 1,000,000 rows of data.")
     
-    # Convert 'dt' to datetime and sort the data
-    try:
-        data['dt'] = pd.to_datetime(data['dt'], format='%d/%m/%y')
-    except:
-        pass
-
-    # reformat dt column to be in YYYY-MM-DD format
-    data['dt'] = data['dt'].dt.strftime('%Y-%m-%d')
-
     data = data.sort_values('dt')
     # Convert to darts TimeSeries format
     series = TimeSeries.from_dataframe(
@@ -45,6 +35,24 @@ def prepare_data(data):
     )
     
     return series
+
+def convert_date_format(user_format):
+    """Convert user-friendly date format to Python's date format"""
+    # Common replacements
+    replacements = {
+        'DD': '%d',
+        'MM': '%m',
+        'YYYY': '%Y',
+        'YY': '%y',
+        'MON': '%b',
+        'MONTH': '%B'
+    }
+    
+    python_format = user_format
+    for user_code, python_code in replacements.items():
+        python_format = python_format.replace(user_code, python_code)
+    
+    return python_format
 
 def forecast_with_theta(data, forecast_steps=10):
     """
@@ -66,7 +74,6 @@ def forecast_with_theta(data, forecast_steps=10):
     
     # Convert forecast to DataFrame
     forecast_df = forecast.pd_dataframe().reset_index()
-    forecast_df['dt'] = forecast_df['dt'].dt.strftime('%Y-%m-%d')
     
     return forecast_df
 
@@ -197,7 +204,7 @@ def select_forecasting_model(data, domain=None, return_name=False):
     print(f"  - Missing values: {missing_ratio:.2%}")
     
     # For each selection, return appropriate function with name
-    if missing_ratio > 0.1:
+    if missing_ratio > 0.2:
         if data_length > 100:
             return (lambda data, forecast_steps: forecast_with_prophet(data, forecast_steps), 
                    "Prophet (due to missing values)") if return_name else lambda data, forecast_steps: forecast_with_prophet(data, forecast_steps)
@@ -475,42 +482,51 @@ def forecast_with_lightgbm(data, forecast_steps=10):
         pd.DataFrame: Forecast results with datetime index
     """
     from darts.models import LightGBMModel
-    from darts.dataprocessing.transformers import Scaler
     
-    # Scale the data
-    scaler = Scaler()
-    scaled_data = scaler.fit_transform(data)
-    
-    # Generate time features
-    model = LightGBMModel(
-        lags=[-1, -2, -3, -7, -14],  # Use multiple past values
-        lags_past_covariates=[0, 1, 2, 3],  # Use covariates at current and future steps
-        output_chunk_length=forecast_steps,
-        add_encoders={
-            "cyclic": {"future": ["month", "day", "dayofweek", "hour"]},
-            "datetime_attribute": {
-                "future": [
-                    "month", "day", "dayofweek", "hour", "dayofyear",
-                    "week", "quarter"
-                ]
+    try:
+        # Configure model based on data frequency
+        lags = [-1, -2, -3]  # Default lags
+        
+        # Add more appropriate lags based on data frequency
+        if data.freq_str in ['D', 'B']:
+            lags.extend([-7, -14])  # Add weekly lags for daily data
+        elif data.freq_str in ['W', 'W-SUN', 'W-MON']:
+            lags.extend([-4, -8])  # Add monthly lags for weekly data
+        elif data.freq_str in ['M', 'MS']:
+            lags.extend([-6, -12])  # Add yearly lags for monthly data
+        elif data.freq_str in ['H']:
+            lags.extend([-24, -168])  # Add daily and weekly lags for hourly data
+        
+        # Generate time features
+        model = LightGBMModel(
+            lags=lags,  # Dynamic lags based on frequency
+            output_chunk_length=forecast_steps,
+            add_encoders={
+                "cyclic": {"future": ["month", "day", "dayofweek"]},
+                "datetime_attribute": {
+                    "future": [
+                        "month", "day", "dayofweek", "dayofyear",
+                        "week", "quarter"
+                    ]
+                }
             }
-        }
-    )
-    
-    # Fit model
-    model.fit(scaled_data)
-    
-    # Generate forecast
-    forecast = model.predict(forecast_steps)
-    
-    # Inverse transform to get original scale
-    forecast = scaler.inverse_transform(forecast)
-    
-    # Convert forecast to DataFrame
-    forecast_df = forecast.pd_dataframe().reset_index()
-    forecast_df['dt'] = forecast_df['dt'].dt.strftime('%Y-%m-%d')
-    
-    return forecast_df
+        )
+        
+        # Fit model directly on raw data (no scaling)
+        model.fit(data)
+        
+        # Generate forecast
+        forecast = model.predict(forecast_steps)
+        
+        # Convert forecast to DataFrame
+        forecast_df = forecast.pd_dataframe().reset_index()
+        forecast_df['dt'] = forecast_df['dt'].dt.strftime('%Y-%m-%d')
+        
+        return forecast_df
+        
+    except Exception as e:
+        print(f"LightGBM model failed. Falling back to Theta model. Error: {str(e)}")
+        return forecast_with_theta(data, forecast_steps)
 
 def infer_seasonality(data):
     """Infers the seasonal period from the data frequency"""
