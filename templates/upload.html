@@ -85,14 +85,17 @@
         <div class="tab-content mt-3">
             <!-- Upload Tab -->
             <div class="tab-pane fade show active" id="upload" role="tabpanel" aria-labelledby="upload-tab">
-                <h2>Upload Your CSV</h2>
+                <h2>Upload Your Data</h2>
                 <form action="/upload" method="post" enctype="multipart/form-data">
                     <div class="mb-3">
-                        <input type="file" name="file" class="form-control" accept=".csv" required>
+                        <input type="file" name="file" class="form-control" accept=".csv,.xlsx,.xls" required>
+                        <div class="form-text text-light">
+                            Accepted formats: CSV, Excel (XLSX, XLS) - Maximum size: 5MB
+                        </div>
                     </div>
                     <button type="submit" class="btn btn-primary">Submit</button>
                 </form>
-                <p class="mt-3">Upload a CSV file with time series data. You'll be able to configure date formats and forecast settings in the next step.</p>
+                <p class="mt-3">Upload your time series data file. You'll configure date formats and forecast settings in the next step.</p>
             </div>
 
             <!-- How it Works? Tab -->

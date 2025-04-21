@@ -6,8 +6,11 @@ from flask import Flask, render_template, request, redirect, url_for, send_file
 from forecasting import select_forecasting_model, baseline_forecast, calculate_cv_accuracy, prepare_data, convert_date_format
 from datetime import timedelta
 
+# In app.py, add this after creating the Flask app
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = 'forecasts'
+# Set maximum file size to 5MB
+app.config['MAX_CONTENT_LENGTH'] = 5 * 1024 * 1024  # 5MB in bytes
 
 # Ensure forecasts folder exists
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
@@ -24,12 +27,19 @@ def upload_file():
     file = request.files['file']
     if file.filename == '':
         return "No selected file", 400
+    
+    # Check if the file extension is allowed
+    allowed_extensions = {'.csv', '.xlsx', '.xls'}
+    file_ext = os.path.splitext(file.filename)[1].lower()
+    
+    if file_ext not in allowed_extensions:
+        return "File type not allowed. Please upload CSV or Excel files.", 400
         
     if file:
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
         file.save(filepath)
         
-        # Redirect to the config page instead of straight to forecast
+        # Redirect to the config page
         return redirect(url_for('configure', filename=file.filename))
 
 @app.route('/configure/<filename>')
@@ -49,8 +59,18 @@ def process():
         
     filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
     
-    # Read the CSV using the specified column names
-    df = pd.read_csv(filepath)
+    # Read the file based on its extension
+    file_ext = os.path.splitext(filename)[1].lower()
+    
+    try:
+        if file_ext == '.csv':
+            df = pd.read_csv(filepath)
+        elif file_ext in ['.xlsx', '.xls']:
+            df = pd.read_excel(filepath)
+        else:
+            return "Unsupported file format", 400
+    except Exception as e:
+        return f"Error reading file: {str(e)}", 400
     
     print(date_column, date_format, value_column)
     # Rename columns to the expected format
@@ -93,7 +113,6 @@ def forecast(filename):
 
     # Create an interactive Plo
     fig = go.Figure()
-    print(df.head())
     fig.add_trace(go.Scatter(x=df['dt'], y=df['value'], mode='lines', name='Original'))
     fig.add_trace(go.Scatter(x=forecast_df['dt'], 
                              y=forecast_df['value'], mode='lines', name='Forecast', line=dict(dash='dash')))
