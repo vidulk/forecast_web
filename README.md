@@ -1,6 +1,8 @@
-📈 Forecast For Everyone
+📈 forecastr.in
 
-Forecast For Everyone is a simple but powerful web app that lets anyone — upload their own data and receive intelligent, benchmarked forecasts, backed by real-world experience and smart automation.
+![image](https://github.com/user-attachments/assets/ea48b6ec-394c-4182-b268-3717684e5543)
+
+forecastr.in is a simple but powerful web app that lets anyone — upload their own data and receive intelligent, benchmarked forecasts, backed by real-world experience and smart automation.
 
 📁 Upload your CSV → 🧠 Answer a few quick questions → 📊 Get forecasts, graphs, and downloads
 
