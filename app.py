@@ -34,13 +34,55 @@ def upload_file():
     
     if file_ext not in allowed_extensions:
         return "File type not allowed. Please upload CSV or Excel files.", 400
+    
+    # Save dataframe to session or temporary file with a random name
+    import uuid
+    temp_filename = f"temp_{uuid.uuid4().hex}{file_ext}"
+    temp_filepath = os.path.join(app.config['UPLOAD_FOLDER'], temp_filename)
+    
+    try:
+        # First save the file temporarily to disk
+        file.save(temp_filepath)
         
-    if file:
-        filepath = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
-        file.save(filepath)
+        # Now read it using the appropriate method
+        if file_ext == '.csv':
+            df = pd.read_csv(temp_filepath)
+        elif file_ext == '.xlsx':
+            df = pd.read_excel(temp_filepath, engine='openpyxl')
+        elif file_ext == '.xls':
+            df = pd.read_excel(temp_filepath, engine='xlrd')
+        else:
+            return "Unsupported file format", 400
         
-        # Redirect to the config page
-        return redirect(url_for('configure', filename=file.filename))
+        # Validate that the file contains data
+        if len(df) == 0:
+            return "The uploaded file doesn't contain any data", 400
+        
+        # Display first few rows for debugging
+        print(f"[DEBUG] File type: {file_ext}, First few rows:")
+        print(df.head())
+        
+        # Save processed dataframe back to CSV
+        csv_temp_filename = f"temp_{uuid.uuid4().hex}.csv"
+        csv_temp_filepath = os.path.join(app.config['UPLOAD_FOLDER'], csv_temp_filename)
+        df.to_csv(csv_temp_filepath, index=False)
+        
+        # Remove the original temporary file if it's not a CSV
+        if file_ext != '.csv':
+            os.remove(temp_filepath)
+        
+        # Use the CSV version for further processing
+        temp_filename = csv_temp_filename
+        
+    except Exception as e:
+        print(f"[ERROR] File processing error: {str(e)}")
+        # Try to remove temporary file if it exists
+        if os.path.exists(temp_filepath):
+            os.remove(temp_filepath)
+        return f"Error processing file: {str(e)}", 400
+    
+    # Redirect to the config page with the temporary filename
+    return redirect(url_for('configure', filename=temp_filename))
 
 @app.route('/configure/<filename>')
 def configure(filename):
@@ -101,6 +143,7 @@ def forecast(filename):
     filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
     df = pd.read_csv(filepath)
     print(df.columns)
+    df.columns = [str(c).strip().replace("=", "").replace("(", "").replace(")", "") for c in df.columns]
     
     prepped_data = prepare_data(df.copy())
     forecast_function, model_name = select_forecasting_model(prepped_data, domain, return_name=True)
