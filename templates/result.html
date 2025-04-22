@@ -10,8 +10,8 @@
     <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
     <style>
         body {
-            background-color: #1e1e2f;
-            color: #dcdcdc;
+            background-color: #0E121A;
+            color: #E0E0E0;
             font-family: 'Anonymous Pro', monospace;
             margin: 0;
             padding: 0;
@@ -25,20 +25,28 @@
         }
         .plot-container {
             max-width: 90%;
-            margin: 40px auto;
+            margin: 5px auto; 
             padding: 20px;
-            background-color: #29293d;
+            background-color: #161b22;
             border-radius: 12px;
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.5);
         }
         .plot-container > div {
             margin: 0 auto;
         }
+        .accuracy-explanation {
+            font-size: 0.9rem;
+            color: #a0a0a0;
+            margin-top: 15px;
+            font-style: italic;
+            text-align: center;
+            padding: 0 20px;
+        }
         .accuracy-details {
             max-width: 90%;
             margin: 20px auto;
             padding: 15px;
-            background-color: #29293d;
+            background-color: #161b22;
             border-radius: 12px;
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.5);
             color: #b5b5b5;
@@ -49,27 +57,70 @@
             text-align: center;
             margin: 20px auto;
             text-decoration: none;
-            color: #5561ff;
+            color: #64b5f6;
             font-weight: bold;
             font-size: 1.2rem;
         }
         a:hover {
             color: #3b47cc;
         }
+        .logo-container {
+            position: absolute;
+            top: 10px;
+            left: 20px;
+        }
+        .logo {
+            height: 60px;
+            width: auto;
+        }
+        .header {
+            text-align: center;
+            padding-top: 10px; /* Reduced padding for tighter layout */
+            margin-bottom: 10px; /* Reduced margin for tighter layout */
+        }
+        .header img {
+            height: 100px;
+            width: auto;
+        }
+        @media (max-width: 768px) {
+            .logo {
+                height: 40px;
+            }
+            .header img {
+                height: 80px;
+            }
+        }
     </style>
 </head>
 <body>
-    <h1>Forecast Result</h1>
+    <!-- Logo in the top left -->
+    <div class="logo-container">
+        <img src="/static/logo.png" alt="Forecast App Logo" class="logo">
+    </div>
+    
+    <!-- Main logo in the header -->
+    <div class="header">
+        <img src="/static/full_logo.png" alt="Forecast App">
+    </div>
+    
     <div class="plot-container">
         <div>{{ plot_html | safe }}</div>
+        
+        <!-- Moved the accuracy explanation text here -->
+        <div class="accuracy-explanation">
+            <p>The expected accuracy is based on cross-validated historical data, while the baseline accuracy represents the average of the last 4 same days historically based on the training data.</p>
+        </div>
     </div>
+    
     <div class="accuracy-details">
         <h2>Accuracy Details</h2>
         <p><strong>Expected Accuracy (Avg % Error):</strong> {{ expected_accuracy }}%</p>
         <p><strong>Baseline Accuracy (Avg % Error):</strong> {{ baseline_accuracy }}%</p>
-        <p>The expected accuracy is based on cross-validated historical data, while the baseline accuracy represents the average of the last 4 same days historically based on the training data.</p>
-        <p></p>
     </div>
+    
     <a href="/download/{{ forecast_file }}">Download Forecast CSV</a>
+    
+    <!-- Return to home link -->
+    <a href="/" style="margin-top: 10px; font-size: 1rem; color: #a0a0a0;">Return to Homepage</a>
 </body>
 </html>

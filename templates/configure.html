@@ -92,9 +92,13 @@
                     <div class="col-md-6">
                         <label for="date_format" class="form-label">Date Format:</label>
                         <input type="text" name="date_format" id="date_format" class="form-control" 
-                               value="DD/MM/YYYY" placeholder="DD/MM/YYYY" required>
+                               value="{{ detected_format }}" placeholder="{{ detected_format }}" required>
                         <div class="form-text text-light">
-                            Examples: DD/MM/YYYY, MM/DD/YYYY, YYYY-MM-DD
+                            Found this to be the probable date format but could be wrong so double check.
+                            <br>Example: if your date is in the format "2023-10-01", enter "YYYY-MM-DD".
+                            <br>For "01/10/2023", enter "DD/MM/YYYY".
+                            <br>For "10/01/2023", enter "MM/DD/YYYY".
+
                         </div>
                     </div>
                 </div>

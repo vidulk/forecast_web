@@ -1,10 +1,9 @@
 import os
 import pandas as pd
 import plotly.graph_objs as go
-from plotly.io import to_html
 from flask import Flask, render_template, request, redirect, url_for, send_file
 from forecasting import select_forecasting_model, baseline_forecast, calculate_cv_accuracy, prepare_data, convert_date_format
-from datetime import timedelta
+import re
 
 # In app.py, add this after creating the Flask app
 app = Flask(__name__)
@@ -15,6 +14,49 @@ app.config['MAX_CONTENT_LENGTH'] = 5 * 1024 * 1024  # 5MB in bytes
 # Ensure forecasts folder exists
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
+def detect_date_format(df, date_column='dt'):
+    """
+    Attempts to detect the date format from the first few rows of data
+    Returns a user-friendly format like DD/MM/YYYY
+    """
+    if date_column not in df.columns:
+        # Try common date column names
+        date_cols = ['date', 'time', 'datetime', 'timestamp', 'day']
+        for col in date_cols:
+            if col in df.columns:
+                date_column = col
+                break
+        else:
+            # If no date column found
+            return "DD/MM/YYYY"  # Default format
+    print(date_column)
+    print(f"[DEBUG] Detecting date format for column: {date_column}")
+    # Get a sample date value (first non-null)
+    sample_dates = df[date_column].dropna()
+    if len(sample_dates) == 0:
+        return "DD/MM/YYYY"  # Default if no valid dates
+        
+    sample = str(sample_dates.iloc[0])
+    # Simple pattern detection based on common formats
+    if re.match(r'\d{4}-\d{2}-\d{2}', sample):
+        return "YYYY-MM-DD"
+    elif re.match(r'\d{2}/\d{2}/\d{4}', sample):
+        # Could be MM/DD/YYYY or DD/MM/YYYY
+        # Try to distinguish based on the values
+        parts = sample.split('/')
+        if int(parts[0]) > 12:  # First part is > 12, likely a day
+            return "DD/MM/YYYY"
+        else:  # Could be month first
+            return "MM/DD/YYYY"
+    elif re.match(r'\d{2}/\d{2}/\d{2}', sample):
+        return "DD/MM/YY"  # or MM/DD/YY, using same logic as above
+    elif re.match(r'\d{2}-\w{3}-\d{4}', sample):
+        return "DD-MON-YYYY"
+    elif re.match(r'\w{3} \d{2}, \d{4}', sample):
+        return "MON DD, YYYY"
+    else:
+        return "DD/MM/YYYY"  # Default format
+    
 @app.route('/')
 def index():
     return render_template('upload.html')
@@ -60,7 +102,6 @@ def upload_file():
         
         # Display first few rows for debugging
         print(f"[DEBUG] File type: {file_ext}, First few rows:")
-        print(df.head())
         
         # Save processed dataframe back to CSV
         csv_temp_filename = f"temp_{uuid.uuid4().hex}.csv"
@@ -86,7 +127,24 @@ def upload_file():
 
 @app.route('/configure/<filename>')
 def configure(filename):
-    return render_template('configure.html', filename=filename)
+    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+    
+    # Try to detect date format from the file
+    detected_format = "DD/MM/YYYY"  # Default
+    try:
+        # Read sample of the file (first 100 rows)
+        file_ext = os.path.splitext(filename)[1].lower()
+        if file_ext == '.csv':
+            df_sample = pd.read_csv(filepath, nrows=100)
+        elif file_ext in ['.xlsx', '.xls']:
+            df_sample = pd.read_excel(filepath, nrows=100)
+            
+        detected_format = detect_date_format(df_sample)
+        
+    except Exception as e:
+        print(f"[WARNING] Could not detect date format: {e}")
+    
+    return render_template('configure.html', filename=filename, detected_format=detected_format)
 
 @app.route('/process', methods=['POST'])
 def process():
@@ -142,7 +200,6 @@ def forecast(filename):
     domain = request.args.get('domain', default=None)
     filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
     df = pd.read_csv(filepath)
-    print(df.columns)
     df.columns = [str(c).strip().replace("=", "").replace("(", "").replace(")", "") for c in df.columns]
     
     prepped_data = prepare_data(df.copy())
@@ -199,3 +256,4 @@ def download_file(forecast_file):
 
 if __name__ == '__main__':
     app.run(debug=True)
+
