@@ -74,6 +74,9 @@
                 <button class="nav-link" id="anonymise-tab" data-bs-toggle="tab" data-bs-target="#anonymise" type="button" role="tab" aria-controls="anonymise" aria-selected="false">How it Works?</button>
             </li>
             <li class="nav-item" role="presentation">
+                <button class="nav-link" id="features-tab" data-bs-toggle="tab" data-bs-target="#features" type="button" role="tab" aria-controls="features" aria-selected="false">Roadmap</button>
+            </li>
+            <li class="nav-item" role="presentation">
                 <button class="nav-link" id="about-tab" data-bs-toggle="tab" data-bs-target="#about" type="button" role="tab" aria-controls="about" aria-selected="false">About Me</button>
             </li>
             <li class="nav-item" role="presentation">
@@ -95,7 +98,16 @@
                     </div>
                     <button type="submit" class="btn btn-primary">Submit</button>
                 </form>
-                <p class="mt-3">Upload your time series data file. You'll configure date formats and forecast settings in the next step.</p>
+                <p class="mt-3">You'll configure date formats and forecast settings in the next step.</p>
+                
+                <!-- Add sample file info -->
+                <div class="sample-file-info mt-3" style="background-color: rgba(30, 144, 255, 0.1); padding: 10px; border-radius: 8px; border-left: 4px solid #1e90ff;">
+                    <p class="mb-1"><strong>Having trouble with your upload?</strong></p>
+                    <p class="mb-0" style="font-size: 0.9rem;">
+                        Check out our <a href="/sample/test.csv" download>sample file</a> to see the expected format.
+                        You're less likely to face errors if your data looks like this.
+                    </p>
+                </div>
             </div>
 
             <!-- How it Works? Tab -->
@@ -132,6 +144,47 @@
                 </ul>
             </div>
 
+            <!-- NEW Roadmap Tab -->
+            <div class="tab-pane fade" id="features" role="tabpanel" aria-labelledby="features-tab">
+                <h2>Upcoming Features</h2>
+                <p>Here's what's coming soon to the Forecast App:</p>
+                
+                <div class="feature-card mt-4" style="background-color: #1a1f2a; border-radius: 8px; padding: 15px; margin-bottom: 20px; text-align: left;">
+                    <h3 style="color: #64b5f6;">🔮 Domain-Specific Variables</h3>
+                    <p>Automatically detect and add relevant domain-specific variables to your forecasts:</p>
+                    <ul>
+                        <li>Holiday effects for retail and tourism data</li>
+                        <li>Weather patterns for outdoor activities and energy consumption</li>
+                        <li>Economic indicators for financial time series</li>
+                        <li>Seasonality detection and modeling</li>
+                    </ul>
+                </div>
+                
+                <div class="feature-card" style="background-color: #1a1f2a; border-radius: 8px; padding: 15px; margin-bottom: 20px; text-align: left;">
+                    <h3 style="color: #64b5f6;">🧩 Covariate Support</h3>
+                    <p>Add your own data to improve forecast accuracy:</p>
+                    <ul>
+                        <li>Upload external factors that might influence your time series</li>
+                        <li>Incorporate marketing spend, promotions, or special events</li>
+                        <li>Use future-known information to enhance predictions</li>
+                        <li>Automatically assess which covariates are most impactful</li>
+                    </ul>
+                </div>
+                
+                <div class="feature-card" style="background-color: #1a1f2a; border-radius: 8px; padding: 15px; margin-bottom: 20px; text-align: left;">
+                    <h3 style="color: #64b5f6;">📊 Enhanced Visualizations</h3>
+                    <p>Gain deeper insights with improved visual analytics:</p>
+                    <ul>
+                        <li>Interactive plots with zoom and pan capabilities</li>
+                        <li>Historical accuracy metrics and visualizations</li>
+                        <li>Confidence intervals and prediction bounds</li>
+                        <li>Component breakdown (trend, seasonality, special events)</li>
+                    </ul>
+                </div>
+                
+                <p style="margin-top: 30px; font-style: italic;">Have a feature suggestion? Let me know through the contact information in the "About Me" section!</p>
+            </div>
+
             <!-- About Me Tab -->
             <div class="tab-pane fade" id="about" role="tabpanel" aria-labelledby="about-tab">
                 <h2>About Me</h2>
@@ -142,7 +195,7 @@
                     This app is designed to help you generate time series forecasts quickly and easily.
 
                     If you have any questions or suggestions, please don't hesitate to reach out to me!
-                    My email address is <a href="mailto:forecasting@data.dev">forecasting@data.dev</a>.
+                    My email address is <a href="mailto:vidulkhanna@gmail.com">vidulkhanna@gmail.com</a>.
                 </p>
             </div>
             <!-- Support Me Tab -->

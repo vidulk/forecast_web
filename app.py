@@ -1,7 +1,7 @@
 import os
 import pandas as pd
 import plotly.graph_objs as go
-from flask import Flask, render_template, request, redirect, url_for, send_file
+from flask import Flask, render_template, request, redirect, url_for, send_file, after_this_request
 from forecasting import select_forecasting_model, baseline_forecast, calculate_cv_accuracy, prepare_data, convert_date_format
 import re
 
@@ -196,9 +196,29 @@ def process():
 
 @app.route('/forecast/<filename>')
 def forecast(filename):
-    steps = request.args.get('steps', default=10, type=int)  # Default to 10 if not specified
+    steps = request.args.get('steps', default=10, type=int)
     domain = request.args.get('domain', default=None)
     filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+    
+    # Define cleanup function to run after the request is processed
+    @after_this_request
+    def cleanup(response):
+        try:
+            # Clean up the processed file
+            if os.path.exists(filepath):
+                os.remove(filepath)
+                print(f"[CLEANUP] Removed processed file: {filepath}")
+            
+            # Clean up the original file (removing 'processed_' prefix)
+            original_filename = filename.replace('processed_', '')
+            original_filepath = os.path.join(app.config['UPLOAD_FOLDER'], original_filename)
+            if os.path.exists(original_filepath) and original_filepath != filepath:
+                os.remove(original_filepath)
+                print(f"[CLEANUP] Removed original file: {original_filepath}")
+        except Exception as e:
+            print(f"[ERROR] Failed to clean up files: {e}")
+        return response
+    
     df = pd.read_csv(filepath)
     df.columns = [str(c).strip().replace("=", "").replace("(", "").replace(")", "") for c in df.columns]
     
@@ -252,8 +272,37 @@ def forecast(filename):
 
 @app.route('/download/<path:forecast_file>')
 def download_file(forecast_file):
+    @after_this_request
+    def remove_file(response):
+        try:
+            if os.path.exists(forecast_file):
+                os.remove(forecast_file)
+                print(f"[CLEANUP] Removed downloaded forecast file: {forecast_file}")
+        except Exception as e:
+            print(f"[ERROR] Failed to remove downloaded file: {e}")
+        return response
+    
     return send_file(forecast_file, as_attachment=True)
 
+# Add a scheduled cleanup function to remove old files on startup
+def cleanup_old_files():
+    """Remove files older than 1 hour from the upload folder"""
+    import time
+    current_time = time.time()
+    folder = app.config['UPLOAD_FOLDER']
+    
+    for filename in os.listdir(folder):
+        filepath = os.path.join(folder, filename)
+        # If file is older than 1 hour (3600 seconds)
+        if os.path.isfile(filepath) and current_time - os.path.getmtime(filepath) > 3600:
+            try:
+                os.remove(filepath)
+                print(f"[CLEANUP] Removed old file: {filepath}")
+            except Exception as e:
+                print(f"[ERROR] Failed to remove old file {filepath}: {e}")
+
+# Call the cleanup function at startup
 if __name__ == '__main__':
+    cleanup_old_files()  # Clean up old files on startup
     app.run(debug=True)
 
