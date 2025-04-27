@@ -7,6 +7,8 @@ import re
 
 # In app.py, add this after creating the Flask app
 app = Flask(__name__)
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'a_very_secret_default_key_for_dev_only')
+app.config['UPLOAD_FOLDER'] = 'forecasts' # We'll change how this is used later
 app.config['UPLOAD_FOLDER'] = 'forecasts'
 # Set maximum file size to 5MB
 app.config['MAX_CONTENT_LENGTH'] = 5 * 1024 * 1024  # 5MB in bytes
@@ -29,16 +31,18 @@ def detect_date_format(df, date_column='dt'):
         else:
             # If no date column found
             return "DD/MM/YYYY"  # Default format
-    print(date_column)
-    print(f"[DEBUG] Detecting date format for column: {date_column}")
+    
     # Get a sample date value (first non-null)
     sample_dates = df[date_column].dropna()
     if len(sample_dates) == 0:
         return "DD/MM/YYYY"  # Default if no valid dates
         
     sample = str(sample_dates.iloc[0])
+    
     # Simple pattern detection based on common formats
-    if re.match(r'\d{4}-\d{2}-\d{2}', sample):
+    if re.match(r'\d{4}-\d{2}$', sample):
+        return "YYYY-MM"  # Year-month format like "1956-01"
+    elif re.match(r'\d{4}-\d{2}-\d{2}', sample):
         return "YYYY-MM-DD"
     elif re.match(r'\d{2}/\d{2}/\d{4}', sample):
         # Could be MM/DD/YYYY or DD/MM/YYYY
@@ -181,6 +185,16 @@ def process():
     
     # Convert date format
     python_date_format = convert_date_format(date_format)
+    
+    # Special handling for Year-Month format
+    if date_format == "YYYY-MM":
+        # For Year-Month format, we need to create a proper datetime
+        # Add day component (1st day of month) if missing
+        df['dt'] = pd.to_datetime(df['dt'] + '-01', errors='coerce', format=python_date_format + '-%d')
+    else:
+        # Normal date parsing
+        df['dt'] = pd.to_datetime(df['dt'], errors='coerce', format=python_date_format)
+    
     print(f"\n[DEBUG] Python date format: {python_date_format}")
     try:
         df['dt'] = pd.to_datetime(df['dt'], format=python_date_format)
