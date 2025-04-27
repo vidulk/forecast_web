@@ -1,26 +1,112 @@
 import os
+import io
+import uuid
 import pandas as pd
 import plotly.graph_objs as go
-from flask import Flask, render_template, request, redirect, url_for, send_file, after_this_request
+from flask import Flask, render_template, request, redirect, url_for, send_file, after_this_request, Response
 from forecasting import select_forecasting_model, baseline_forecast, calculate_cv_accuracy, prepare_data, convert_date_format
 import re
+import boto3
+from botocore.exceptions import ClientError
 
-# In app.py, add this after creating the Flask app
+# Set up Flask app
 app = Flask(__name__)
-app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'a_very_secret_default_key_for_dev_only')
-app.config['UPLOAD_FOLDER'] = 'forecasts' # We'll change how this is used later
-app.config['UPLOAD_FOLDER'] = 'forecasts'
-# Set maximum file size to 5MB
-app.config['MAX_CONTENT_LENGTH'] = 5 * 1024 * 1024  # 5MB in bytes
+app.config['MAX_CONTENT_LENGTH'] = 5 * 1024 * 1024  # 5MB max upload size
 
-# Ensure forecasts folder exists
-os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+# Create a directory to temporarily hold files for processing
+app.config['TEMP_FOLDER'] = 'temp_files'
+os.makedirs(app.config['TEMP_FOLDER'], exist_ok=True)
 
+# Initialize S3 client
+def get_s3_client():
+    """Get S3 client with credentials from environment variables"""
+    return boto3.client(
+        's3',
+        aws_access_key_id=os.environ.get('AWS_ACCESS_KEY_ID'),
+        aws_secret_access_key=os.environ.get('AWS_SECRET_ACCESS_KEY'),
+        region_name=os.environ.get('AWS_REGION')
+    )
+
+# S3 bucket name from environment variable
+S3_BUCKET = os.environ.get('S3_BUCKET_NAME')
+
+# Helper functions for S3
+def upload_to_s3(file_obj, key):
+    """Upload a file object to S3"""
+    s3 = get_s3_client()
+    try:
+        s3.upload_fileobj(file_obj, S3_BUCKET, key)
+        return True
+    except ClientError as e:
+        print(f"[ERROR] S3 upload failed: {e}")
+        return False
+
+def read_from_s3(key, as_dataframe=True):
+    """Read a file from S3, optionally return as DataFrame"""
+    s3 = get_s3_client()
+    try:
+        response = s3.get_object(Bucket=S3_BUCKET, Key=key)
+        if as_dataframe:
+            # Detect file type from key
+            if key.endswith('.csv'):
+                return pd.read_csv(io.BytesIO(response['Body'].read()))
+            elif key.endswith('.xlsx'):
+                return pd.read_excel(io.BytesIO(response['Body'].read()), engine='openpyxl')
+            elif key.endswith('.xls'):
+                return pd.read_excel(io.BytesIO(response['Body'].read()), engine='xlrd')
+        else:
+            return response['Body'].read()
+    except ClientError as e:
+        print(f"[ERROR] S3 read failed: {e}")
+        return None
+
+def save_dataframe_to_s3(df, key):
+    """Save a DataFrame to S3 as CSV"""
+    s3 = get_s3_client()
+    try:
+        csv_buffer = io.StringIO()
+        df.to_csv(csv_buffer, index=False)
+        s3.put_object(
+            Bucket=S3_BUCKET,
+            Key=key,
+            Body=csv_buffer.getvalue()
+        )
+        return True
+    except ClientError as e:
+        print(f"[ERROR] S3 dataframe save failed: {e}")
+        return False
+
+def delete_from_s3(key):
+    """Delete a file from S3"""
+    s3 = get_s3_client()
+    try:
+        s3.delete_object(Bucket=S3_BUCKET, Key=key)
+        return True
+    except ClientError as e:
+        print(f"[ERROR] S3 delete failed: {e}")
+        return False
+
+def generate_presigned_url(key, expiration=3600):
+    """Generate a pre-signed URL for a file in S3"""
+    s3 = get_s3_client()
+    try:
+        response = s3.generate_presigned_url(
+            'get_object',
+            Params={'Bucket': S3_BUCKET, 'Key': key},
+            ExpiresIn=expiration
+        )
+        return response
+    except ClientError as e:
+        print(f"[ERROR] Failed to generate presigned URL: {e}")
+        return None
+
+# Keep the existing detect_date_format function
 def detect_date_format(df, date_column='dt'):
     """
     Attempts to detect the date format from the first few rows of data
     Returns a user-friendly format like DD/MM/YYYY
     """
+    # Your existing function code unchanged...
     if date_column not in df.columns:
         # Try common date column names
         date_cols = ['date', 'time', 'datetime', 'timestamp', 'day']
@@ -60,7 +146,7 @@ def detect_date_format(df, date_column='dt'):
         return "MON DD, YYYY"
     else:
         return "DD/MM/YYYY"  # Default format
-    
+
 @app.route('/')
 def index():
     return render_template('upload.html')
@@ -81,22 +167,17 @@ def upload_file():
     if file_ext not in allowed_extensions:
         return "File type not allowed. Please upload CSV or Excel files.", 400
     
-    # Save dataframe to session or temporary file with a random name
-    import uuid
+    # Generate unique filename for S3
     temp_filename = f"temp_{uuid.uuid4().hex}{file_ext}"
-    temp_filepath = os.path.join(app.config['UPLOAD_FOLDER'], temp_filename)
     
     try:
-        # First save the file temporarily to disk
-        file.save(temp_filepath)
-        
-        # Now read it using the appropriate method
+        # Read the uploaded file with appropriate method
         if file_ext == '.csv':
-            df = pd.read_csv(temp_filepath)
+            df = pd.read_csv(file)
         elif file_ext == '.xlsx':
-            df = pd.read_excel(temp_filepath, engine='openpyxl')
+            df = pd.read_excel(file, engine='openpyxl')
         elif file_ext == '.xls':
-            df = pd.read_excel(temp_filepath, engine='xlrd')
+            df = pd.read_excel(file, engine='xlrd')
         else:
             return "Unsupported file format", 400
         
@@ -106,24 +187,18 @@ def upload_file():
         
         # Display first few rows for debugging
         print(f"[DEBUG] File type: {file_ext}, First few rows:")
+        print(df.head())
         
-        # Save processed dataframe back to CSV
+        # Save processed dataframe to S3 as CSV
         csv_temp_filename = f"temp_{uuid.uuid4().hex}.csv"
-        csv_temp_filepath = os.path.join(app.config['UPLOAD_FOLDER'], csv_temp_filename)
-        df.to_csv(csv_temp_filepath, index=False)
-        
-        # Remove the original temporary file if it's not a CSV
-        if file_ext != '.csv':
-            os.remove(temp_filepath)
+        if not save_dataframe_to_s3(df, csv_temp_filename):
+            return "Error saving file to storage", 500
         
         # Use the CSV version for further processing
         temp_filename = csv_temp_filename
         
     except Exception as e:
         print(f"[ERROR] File processing error: {str(e)}")
-        # Try to remove temporary file if it exists
-        if os.path.exists(temp_filepath):
-            os.remove(temp_filepath)
         return f"Error processing file: {str(e)}", 400
     
     # Redirect to the config page with the temporary filename
@@ -131,20 +206,16 @@ def upload_file():
 
 @app.route('/configure/<filename>')
 def configure(filename):
-    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-    
     # Try to detect date format from the file
     detected_format = "DD/MM/YYYY"  # Default
+    
     try:
-        # Read sample of the file (first 100 rows)
-        file_ext = os.path.splitext(filename)[1].lower()
-        if file_ext == '.csv':
-            df_sample = pd.read_csv(filepath, nrows=100)
-        elif file_ext in ['.xlsx', '.xls']:
-            df_sample = pd.read_excel(filepath, nrows=100)
-            
-        detected_format = detect_date_format(df_sample)
-        
+
+        # Read sample from S3
+        df_sample = read_from_s3(filename)
+        if df_sample is not None:
+            detected_format = detect_date_format(df_sample)
+
     except Exception as e:
         print(f"[WARNING] Could not detect date format: {e}")
     
@@ -160,19 +231,11 @@ def process():
     
     if not steps or steps <= 0:
         return "Invalid timesteps value", 400
-        
-    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-    
-    # Read the file based on its extension
-    file_ext = os.path.splitext(filename)[1].lower()
     
     try:
-        if file_ext == '.csv':
-            df = pd.read_csv(filepath)
-        elif file_ext in ['.xlsx', '.xls']:
-            df = pd.read_excel(filepath)
-        else:
-            return "Unsupported file format", 400
+        df = read_from_s3(filename)
+        if df is None:
+            return "Error reading file from storage", 500
     except Exception as e:
         return f"Error reading file: {str(e)}", 400
     
@@ -201,39 +264,30 @@ def process():
     except ValueError as e:
         return f"Could you go back and check your date format and make sure its correct?", 400
     
-    # Save the processed file
-    processed_filepath = os.path.join(app.config['UPLOAD_FOLDER'], f'processed_{filename}')
-    df.to_csv(processed_filepath, index=False)
+    # Save the processed file to S3
+    processed_filename = f"processed_{filename}"
+    if not save_dataframe_to_s3(df, processed_filename):
+        return "Error saving processed file", 500
+    
+    # Delete the original temporary file
+    delete_from_s3(filename)
     
     # Now redirect to forecast with the processed file
-    return redirect(url_for('forecast', filename=f'processed_{filename}', steps=steps))
+    return redirect(url_for('forecast', filename=processed_filename, steps=steps))
 
 @app.route('/forecast/<filename>')
 def forecast(filename):
     steps = request.args.get('steps', default=10, type=int)
     domain = request.args.get('domain', default=None)
-    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
     
-    # Define cleanup function to run after the request is processed
-    @after_this_request
-    def cleanup(response):
-        try:
-            # Clean up the processed file
-            if os.path.exists(filepath):
-                os.remove(filepath)
-                print(f"[CLEANUP] Removed processed file: {filepath}")
-            
-            # Clean up the original file (removing 'processed_' prefix)
-            original_filename = filename.replace('processed_', '')
-            original_filepath = os.path.join(app.config['UPLOAD_FOLDER'], original_filename)
-            if os.path.exists(original_filepath) and original_filepath != filepath:
-                os.remove(original_filepath)
-                print(f"[CLEANUP] Removed original file: {original_filepath}")
-        except Exception as e:
-            print(f"[ERROR] Failed to clean up files: {e}")
-        return response
+    # Read the processed file from S3
+    try:
+        df = read_from_s3(filename)
+        if df is None:
+            return "Error reading processed file from storage", 500
+    except Exception as e:
+        return f"Error reading processed file: {str(e)}", 500
     
-    df = pd.read_csv(filepath)
     df.columns = [str(c).strip().replace("=", "").replace("(", "").replace(")", "") for c in df.columns]
     
     prepped_data = prepare_data(df.copy())
@@ -245,7 +299,7 @@ def forecast(filename):
     print(f"[DEBUG] Domain: {domain if domain else 'Not specified'}")
     print(f"[DEBUG] Forecast steps: {steps}\n")
 
-    # Create an interactive Plo
+    # Create an interactive Plot
     fig = go.Figure()
     fig.add_trace(go.Scatter(x=df['dt'], y=df['value'], mode='lines', name='Original'))
     fig.add_trace(go.Scatter(x=forecast_df['dt'], 
@@ -263,8 +317,10 @@ def forecast(filename):
     }
     plot_html = fig.to_html(full_html=False, include_plotlyjs=False, config=config)
 
-    forecast_path = os.path.join(app.config['UPLOAD_FOLDER'], f'forecast_{filename}')
-    forecast_df.to_csv(forecast_path, index=False)
+    # Save forecast to S3
+    forecast_filename = f"forecast_{filename}"
+    if not save_dataframe_to_s3(forecast_df, forecast_filename):
+        return "Error saving forecast file", 500
     
     expected_accuracy = round(calculate_cv_accuracy(
         prepped_data,
@@ -272,7 +328,7 @@ def forecast(filename):
         forecast_horizon=steps,
         num_folds=2,
         stride=1
-    )['mape'],3)
+    )['mape'], 3)
 
     baseline_accuracy = round(calculate_cv_accuracy(
         prepped_data,
@@ -280,43 +336,88 @@ def forecast(filename):
         forecast_horizon=steps,
         num_folds=2,
         stride=1
-    )['mape'],3)
+    )['mape'], 3)
+    
+    # Clean up the processed file after rendering the template
+    @after_this_request
+    def cleanup(response):
+        try:
+            # Delete the processed file from S3
+            delete_from_s3(filename)
+            print(f"[CLEANUP] Removed processed file: {filename}")
+            
+            # Delete the original file (removing 'processed_' prefix) if it exists
+            original_filename = filename.replace('processed_', '')
+            if original_filename != filename:
+                delete_from_s3(original_filename)
+                print(f"[CLEANUP] Removed original file: {original_filename}")
+        except Exception as e:
+            print(f"[ERROR] Failed to clean up files: {e}")
+        return response
 
-    return render_template('result.html', plot_html=plot_html, forecast_file=forecast_path, expected_accuracy=expected_accuracy, baseline_accuracy=baseline_accuracy)
+    return render_template('result.html', plot_html=plot_html, forecast_file=forecast_filename, expected_accuracy=expected_accuracy, baseline_accuracy=baseline_accuracy)
 
 @app.route('/download/<path:forecast_file>')
 def download_file(forecast_file):
-    @after_this_request
-    def remove_file(response):
-        try:
-            if os.path.exists(forecast_file):
-                os.remove(forecast_file)
-                print(f"[CLEANUP] Removed downloaded forecast file: {forecast_file}")
-        except Exception as e:
-            print(f"[ERROR] Failed to remove downloaded file: {e}")
-        return response
-    
-    return send_file(forecast_file, as_attachment=True)
-
-# Add a scheduled cleanup function to remove old files on startup
-def cleanup_old_files():
-    """Remove files older than 1 hour from the upload folder"""
-    import time
-    current_time = time.time()
-    folder = app.config['UPLOAD_FOLDER']
-    
-    for filename in os.listdir(folder):
-        filepath = os.path.join(folder, filename)
-        # If file is older than 1 hour (3600 seconds)
-        if os.path.isfile(filepath) and current_time - os.path.getmtime(filepath) > 3600:
+    try:
+        # Generate a pre-signed URL for the forecast file
+        presigned_url = generate_presigned_url(forecast_file)
+        if not presigned_url:
+            return "Error generating download link", 500
+        
+        # Read the file from S3
+        file_data = read_from_s3(forecast_file, as_dataframe=False)
+        if file_data is None:
+            return "Error reading forecast file", 500
+        
+        # Set up cleanup to delete the forecast file after download
+        @after_this_request
+        def cleanup(response):
             try:
-                os.remove(filepath)
-                print(f"[CLEANUP] Removed old file: {filepath}")
+                delete_from_s3(forecast_file)
+                print(f"[CLEANUP] Removed downloaded forecast file: {forecast_file}")
             except Exception as e:
-                print(f"[ERROR] Failed to remove old file {filepath}: {e}")
+                print(f"[ERROR] Failed to remove downloaded file: {e}")
+            return response
+        
+        # Create a response with the file data
+        response = Response(
+            file_data,
+            mimetype='text/csv',
+            headers={'Content-Disposition': f'attachment; filename={forecast_file.split("/")[-1]}'}
+        )
+        
+        return response
+        
+    except Exception as e:
+        print(f"[ERROR] Download error: {e}")
+        return "Error preparing download", 500
 
-# Call the cleanup function at startup
+# Add a scheduled cleanup function for S3 objects
+def cleanup_old_s3_files():
+    """Remove files older than 1 hour from S3 bucket"""
+    import time
+    from datetime import datetime, timedelta
+    
+    s3 = get_s3_client()
+    one_hour_ago = datetime.now() - timedelta(hours=1)
+    
+    try:
+        objects = s3.list_objects_v2(Bucket=S3_BUCKET)
+        if 'Contents' in objects:
+            for obj in objects['Contents']:
+                # If object is older than 1 hour
+                if obj['LastModified'].replace(tzinfo=None) < one_hour_ago:
+                    try:
+                        s3.delete_object(Bucket=S3_BUCKET, Key=obj['Key'])
+                        print(f"[CLEANUP] Removed old S3 file: {obj['Key']}")
+                    except Exception as e:
+                        print(f"[ERROR] Failed to remove old S3 file {obj['Key']}: {e}")
+    except Exception as e:
+        print(f"[ERROR] Error listing S3 objects: {e}")
+
 if __name__ == '__main__':
-    cleanup_old_files()  # Clean up old files on startup
+    
+    cleanup_old_s3_files()  # Clean up old files on startup
     app.run(debug=True)
 
