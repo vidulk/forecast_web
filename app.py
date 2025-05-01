@@ -13,10 +13,6 @@ from botocore.exceptions import ClientError
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 5 * 1024 * 1024  # 5MB max upload size
 
-# Create a directory to temporarily hold files for processing
-app.config['TEMP_FOLDER'] = 'temp_files'
-os.makedirs(app.config['TEMP_FOLDER'], exist_ok=True)
-
 # Initialize S3 client
 def get_s3_client():
     """Get S3 client with credentials from environment variables"""
@@ -280,80 +276,100 @@ def forecast(filename):
     steps = request.args.get('steps', default=10, type=int)
     domain = request.args.get('domain', default=None)
     
+    app.logger.info(f"Starting forecast for file: {filename}, steps: {steps}, domain: {domain}")
+    
     # Read the processed file from S3
     try:
+        app.logger.info(f"Reading file from S3: {filename}")
         df = read_from_s3(filename)
         if df is None:
+            app.logger.error(f"Error reading processed file - returned None: {filename}")
             return "Error reading processed file from storage", 500
+        app.logger.info(f"Successfully read file, shape: {df.shape}")
     except Exception as e:
+        app.logger.error(f"Exception reading file from S3: {str(e)}", exc_info=True)
         return f"Error reading processed file: {str(e)}", 500
     
-    df.columns = [str(c).strip().replace("=", "").replace("(", "").replace(")", "") for c in df.columns]
-    
-    prepped_data = prepare_data(df.copy())
-    forecast_function, model_name = select_forecasting_model(prepped_data, domain, return_name=True)
-    forecast_df = forecast_function(prepped_data, forecast_steps=steps)
-    
-    print(f"\n[DEBUG] Selected model: {model_name}")
-    print(f"[DEBUG] Data length: {len(prepped_data)}")
-    print(f"[DEBUG] Domain: {domain if domain else 'Not specified'}")
-    print(f"[DEBUG] Forecast steps: {steps}\n")
+    try:
+        app.logger.info("Cleaning column names")
+        df.columns = [str(c).strip().replace("=", "").replace("(", "").replace(")", "") for c in df.columns]
+        app.logger.info(f"Columns after cleaning: {df.columns.tolist()}")
+        
+        app.logger.info("Preparing data for forecasting")
+        prepped_data = prepare_data(df.copy())
+        app.logger.info(f"Data prepared, length: {len(prepped_data)}")
+        
+        app.logger.info(f"Selecting forecast model for domain: {domain}")
+        forecast_function, model_name = select_forecasting_model(prepped_data, domain, return_name=True)
+        app.logger.info(f"Selected model: {model_name}")
+        
+        app.logger.info(f"Generating forecast for {steps} steps")
+        forecast_df = forecast_function(prepped_data, forecast_steps=steps)
+        app.logger.info(f"Forecast generated, shape: {forecast_df.shape}")
+        
+        print(f"\n[DEBUG] Selected model: {model_name}")
+        print(f"[DEBUG] Data length: {len(prepped_data)}")
+        print(f"[DEBUG] Domain: {domain if domain else 'Not specified'}")
+        print(f"[DEBUG] Forecast steps: {steps}\n")
 
-    # Create an interactive Plot
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(x=df['dt'], y=df['value'], mode='lines', name='Original'))
-    fig.add_trace(go.Scatter(x=forecast_df['dt'], 
-                             y=forecast_df['value'], mode='lines', name='Forecast', line=dict(dash='dash')))
-    fig.update_layout(title='Forecast vs Original', xaxis_title='Index', yaxis_title='Value')
-    
-    # predicted score on future data
-    base_forecast = baseline_forecast(prepped_data, forecast_steps=steps)
-    fig.add_trace(go.Scatter(x=base_forecast['dt'], 
-                             y=base_forecast['value'], mode='lines', name='Baseline Forecast', line=dict(dash='dash')))
+        # Create an interactive Plot
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(x=df['dt'], y=df['value'], mode='lines', name='Original'))
+        fig.add_trace(go.Scatter(x=forecast_df['dt'], 
+                                y=forecast_df['value'], mode='lines', name='Forecast', line=dict(dash='dash')))
+        fig.update_layout(title='Forecast vs Original', xaxis_title='Index', yaxis_title='Value')
+        
+        # predicted score on future data
+        base_forecast = baseline_forecast(prepped_data, forecast_steps=steps)
+        fig.add_trace(go.Scatter(x=base_forecast['dt'], 
+                                y=base_forecast['value'], mode='lines', name='Baseline Forecast', line=dict(dash='dash')))
 
-    # Add config to hide the mode bar
-    config = {
-        'displayModeBar': False,  # Hides the toolbar completely
-    }
-    plot_html = fig.to_html(full_html=False, include_plotlyjs=False, config=config)
+        # Add config to hide the mode bar
+        config = {
+            'displayModeBar': False,  # Hides the toolbar completely
+        }
+        plot_html = fig.to_html(full_html=False, include_plotlyjs=False, config=config)
 
-    # Save forecast to S3
-    forecast_filename = f"forecast_{filename}"
-    if not save_dataframe_to_s3(forecast_df, forecast_filename):
-        return "Error saving forecast file", 500
-    
-    expected_accuracy = round(calculate_cv_accuracy(
-        prepped_data,
-        forecast_function,
-        forecast_horizon=steps,
-        num_folds=2,
-        stride=1
-    )['mape'], 3)
+        # Save forecast to S3
+        forecast_filename = f"forecast_{filename}"
+        if not save_dataframe_to_s3(forecast_df, forecast_filename):
+            return "Error saving forecast file", 500
+        
+        expected_accuracy = round(calculate_cv_accuracy(
+            prepped_data,
+            forecast_function,
+            forecast_horizon=steps,
+            num_folds=2,
+            stride=1
+        )['mape'], 3)
 
-    baseline_accuracy = round(calculate_cv_accuracy(
-        prepped_data,
-        baseline_forecast,
-        forecast_horizon=steps,
-        num_folds=2,
-        stride=1
-    )['mape'], 3)
-    
-    # Clean up the processed file after rendering the template
-    @after_this_request
-    def cleanup(response):
-        try:
-            # Delete the processed file from S3
-            delete_from_s3(filename)
-            print(f"[CLEANUP] Removed processed file: {filename}")
-            
-            # Delete the original file (removing 'processed_' prefix) if it exists
-            original_filename = filename.replace('processed_', '')
-            if original_filename != filename:
-                delete_from_s3(original_filename)
-                print(f"[CLEANUP] Removed original file: {original_filename}")
-        except Exception as e:
-            print(f"[ERROR] Failed to clean up files: {e}")
-        return response
+        baseline_accuracy = round(calculate_cv_accuracy(
+            prepped_data,
+            baseline_forecast,
+            forecast_horizon=steps,
+            num_folds=2,
+            stride=1
+        )['mape'], 3)
+        
+        # Clean up the processed file after rendering the template
+        @after_this_request
+        def cleanup(response):
+            try:
+                # Delete the processed file from S3
+                delete_from_s3(filename)
+                print(f"[CLEANUP] Removed processed file: {filename}")
+                
+                # Delete the original file (removing 'processed_' prefix) if it exists
+                original_filename = filename.replace('processed_', '')
+                if original_filename != filename:
+                    delete_from_s3(original_filename)
+                    print(f"[CLEANUP] Removed original file: {original_filename}")
+            except Exception as e:
+                print(f"[ERROR] Failed to clean up files: {e}")
+            return response
+    except Exception as e:
+        app.logger.error(f"Exception during forecasting: {str(e)}", exc_info=True)
+        return f"Error during forecasting: {str(e)}", 500
 
     return render_template('result.html', plot_html=plot_html, forecast_file=forecast_filename, expected_accuracy=expected_accuracy, baseline_accuracy=baseline_accuracy)
 
@@ -416,8 +432,13 @@ def cleanup_old_s3_files():
     except Exception as e:
         print(f"[ERROR] Error listing S3 objects: {e}")
 
+@app.errorhandler(Exception)
+def handle_exception(e):
+    """Handle all unhandled exceptions and log them properly"""
+    app.logger.error(f"Unhandled exception: {str(e)}", exc_info=True)
+    return f"An error occurred: {str(e)}", 500
+
 if __name__ == '__main__':
     
     cleanup_old_s3_files()  # Clean up old files on startup
     app.run(debug=True)
-
