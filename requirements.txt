@@ -2,6 +2,7 @@ adagio==0.2.6
 aiohappyeyeballs==2.4.4
 aiohttp==3.11.11
 aiosignal==1.3.2
+alembic==1.16.2
 appdirs==1.4.4
 attrs==24.3.0
 blinker==1.9.0
@@ -12,6 +13,7 @@ charset-normalizer==3.4.1
 click==8.1.8
 cloudpickle==3.1.0
 cmdstanpy==1.2.5
+colorlog==6.9.0
 contourpy==1.3.1
 coreforecast==0.0.15
 cycler==0.12.1
@@ -25,6 +27,7 @@ frozenlist==1.5.0
 fs==2.4.16
 fsspec==2024.12.0
 fugue==0.9.1
+greenlet==3.2.3
 gunicorn==23.0.0
 holidays==0.64
 idna==3.10
@@ -37,8 +40,10 @@ kiwisolver==1.4.8
 lightgbm==4.6.0
 lightning-utilities==0.11.9
 llvmlite==0.43.0
+Mako==1.3.10
 MarkupSafe==3.0.2
 matplotlib==3.10.0
+mlforecast==1.0.2
 mpmath==1.3.0
 multidict==6.1.0
 networkx==3.4.2
@@ -46,6 +51,7 @@ nfoursid==1.0.1
 numba==0.60.0
 numpy==1.26.4
 openpyxl==3.1.5
+optuna==4.4.0
 packaging==24.2
 pandas==2.2.3
 patsy==1.0.1
@@ -70,6 +76,7 @@ setuptools==75.7.0
 shap==0.46.0
 six==1.17.0
 slicer==0.0.8
+SQLAlchemy==2.0.41
 stanio==0.5.1
 statsforecast==2.0.0
 statsmodels==0.14.4
