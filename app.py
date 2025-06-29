@@ -4,7 +4,7 @@ import uuid
 import pandas as pd
 import plotly.graph_objs as go
 from flask import Flask, render_template, request, redirect, url_for, send_file, after_this_request, Response
-from forecasting import select_forecasting_model, baseline_forecast, calculate_cv_accuracy, prepare_data, convert_date_format
+from forecasting import select_forecasting_model, get_baseline_model_object, calculate_cv_accuracy, prepare_data, convert_date_format
 import re
 import boto3
 from botocore.exceptions import ClientError
@@ -97,51 +97,72 @@ def generate_presigned_url(key, expiration=3600):
         return None
 
 # Keep the existing detect_date_format function
-def detect_date_format(df, date_column='dt'):
+def detect_date_format(df, date_column='ds'):
     """
-    Attempts to detect the date format from the first few rows of data
-    Returns a user-friendly format like DD/MM/YYYY
+    Attempts to detect the date format from the first few rows of data.
+    Returns a user-friendly format like DD/MM/YYYY.
     """
-    # Your existing function code unchanged...
+    # Find the date column if not 'ds'
     if date_column not in df.columns:
-        # Try common date column names
-        date_cols = ['date', 'time', 'datetime', 'timestamp', 'day']
-        for col in date_cols:
+        common_date_cols = ['date', 'time', 'datetime', 'timestamp', 'day']
+        for col in common_date_cols:
             if col in df.columns:
                 date_column = col
                 break
         else:
-            # If no date column found
-            return "DD/MM/YYYY"  # Default format
-    
+            return "DD/MM/YYYY"  # Default if no date column found
+
     # Get a sample date value (first non-null)
     sample_dates = df[date_column].dropna()
-    if len(sample_dates) == 0:
+    if sample_dates.empty:
         return "DD/MM/YYYY"  # Default if no valid dates
-        
-    sample = str(sample_dates.iloc[0])
-    
-    # Simple pattern detection based on common formats
-    if re.match(r'\d{4}-\d{2}$', sample):
-        return "YYYY-MM"  # Year-month format like "1956-01"
-    elif re.match(r'\d{4}-\d{2}-\d{2}', sample):
-        return "YYYY-MM-DD"
-    elif re.match(r'\d{2}/\d{2}/\d{4}', sample):
-        # Could be MM/DD/YYYY or DD/MM/YYYY
-        # Try to distinguish based on the values
-        parts = sample.split('/')
-        if int(parts[0]) > 12:  # First part is > 12, likely a day
-            return "DD/MM/YYYY"
-        else:  # Could be month first
-            return "MM/DD/YYYY"
-    elif re.match(r'\d{2}/\d{2}/\d{2}', sample):
-        return "DD/MM/YY"  # or MM/DD/YY, using same logic as above
-    elif re.match(r'\d{2}-\w{3}-\d{4}', sample):
-        return "DD-MON-YYYY"
-    elif re.match(r'\w{3} \d{2}, \d{4}', sample):
-        return "MON DD, YYYY"
-    else:
-        return "DD/MM/YYYY"  # Default format
+
+    sample = str(sample_dates.iloc[0]).strip()
+    print(f"[DEBUG] Detecting format for sample date: '{sample}'")
+
+    # Define formats to check, from most specific to most general
+    formats_to_check = {
+        r'^\d{4}-\d{2}-\d{2}': "YYYY-MM-DD",
+        r'^\d{4}-\d{2}$': "YYYY-MM",
+        r'^\d{2}-\w{3}-\d{4}': "DD-MON-YYYY",
+        r'^\w{3} \d{2}, \d{4}': "MON DD, YYYY",
+        r'^\d{1,2}[/-]\d{1,2}[/-]\d{2,4}$': None,  # Ambiguous, needs check
+    }
+
+    for pattern, fmt in formats_to_check.items():
+        if re.match(pattern, sample):
+            print(f"[DEBUG] Matched pattern: {pattern}")
+            if fmt:  # If format is non-ambiguous, return it
+                return fmt
+            
+            # Handle ambiguous formats like DD/MM/YYYY vs MM/DD/YYYY
+            separator = re.search(r'([/-])', sample).group(1)
+            parts = sample.split(separator)
+            
+            try:
+                part1 = int(parts[0])
+                part2 = int(parts[1])
+                year_part = parts[2]
+                
+                # Explicitly check year length for proper format
+                year_format = 'YYYY' if len(year_part) == 4 else 'YY'
+                print(f"[DEBUG] Date parts: {part1}{separator}{part2}{separator}{year_part} (year format: {year_format})")
+
+                # Check if the first part is likely a day (>12)
+                if part1 > 12:
+                    return f"DD{separator}MM{separator}{year_format}"
+                # Check if the second part is likely a day (>12)
+                elif part2 > 12:
+                    return f"MM{separator}DD{separator}{year_format}"
+                # If both are <= 12, it's ambiguous. Default to DD/MM/YYYY format
+                else:
+                    return f"DD{separator}MM{separator}{year_format}"
+            except (ValueError, IndexError) as e:
+                print(f"[DEBUG] Error parsing date parts: {e}")
+                continue # Move to next pattern if parsing fails
+
+    print("[DEBUG] No format pattern matched, using default")
+    return "DD/MM/YYYY"  # Default format if no match found
 
 @app.route('/')
 def index():
@@ -220,7 +241,7 @@ def configure(filename):
 @app.route('/process', methods=['POST'])
 def process():
     filename = request.form.get('filename')
-    date_column = request.form.get('date_column', 'dt')
+    date_column = request.form.get('date_column', 'ds')
     date_format = request.form.get('date_format', 'DD/MM/YYYY')
     value_column = request.form.get('value_column', 'value')
     steps = request.form.get('steps', type=int, default=7)
@@ -236,11 +257,11 @@ def process():
         return f"Error reading file: {str(e)}", 400
     
     print(date_column, date_format, value_column)
-    # Rename columns to the expected format
-    if date_column != 'dt':
-        df = df.rename(columns={date_column: 'dt'})
-    if value_column != 'value':
-        df = df.rename(columns={value_column: 'value'})
+    # Rename columns to the expected formatls
+    if date_column != 'ds':
+        df = df.rename(columns={date_column: 'ds'})
+    if value_column != 'y':
+        df = df.rename(columns={value_column: 'y'})
     
     # Convert date format
     python_date_format = convert_date_format(date_format)
@@ -249,14 +270,14 @@ def process():
     if date_format == "YYYY-MM":
         # For Year-Month format, we need to create a proper datetime
         # Add day component (1st day of month) if missing
-        df['dt'] = pd.to_datetime(df['dt'] + '-01', errors='coerce', format=python_date_format + '-%d')
+        df['ds'] = pd.to_datetime(df['ds'] + '-01', errors='coerce', format=python_date_format + '-%d')
     else:
         # Normal date parsing
-        df['dt'] = pd.to_datetime(df['dt'], errors='coerce', format=python_date_format)
+        df['ds'] = pd.to_datetime(df['ds'], errors='coerce', format=python_date_format)
     
     print(f"\n[DEBUG] Python date format: {python_date_format}")
     try:
-        df['dt'] = pd.to_datetime(df['dt'], format=python_date_format)
+        df['ds'] = pd.to_datetime(df['ds'], format=python_date_format)
     except ValueError as e:
         return f"Could you go back and check your date format and make sure its correct?", 400
     
@@ -275,10 +296,7 @@ def process():
 def forecast(filename):
     steps = request.args.get('steps', default=10, type=int)
     domain = request.args.get('domain', default=None)
-    
     app.logger.info(f"Starting forecast for file: {filename}, steps: {steps}, domain: {domain}")
-    
-    # Read the processed file from S3
     try:
         app.logger.info(f"Reading file from S3: {filename}")
         df = read_from_s3(filename)
@@ -289,77 +307,81 @@ def forecast(filename):
     except Exception as e:
         app.logger.error(f"Exception reading file from S3: {str(e)}", exc_info=True)
         return f"Error reading processed file: {str(e)}", 500
-    
     try:
         app.logger.info("Cleaning column names")
         df.columns = [str(c).strip().replace("=", "").replace("(", "").replace(")", "") for c in df.columns]
         app.logger.info(f"Columns after cleaning: {df.columns.tolist()}")
-        
         app.logger.info("Preparing data for forecasting")
         prepped_data = prepare_data(df.copy())
         app.logger.info(f"Data prepared, length: {len(prepped_data)}")
-        
-        app.logger.info(f"Selecting forecast model for domain: {domain}")
-        forecast_function, model_name = select_forecasting_model(prepped_data, domain, return_name=True)
+
+        # This line now intelligently selects StatsForecast or MLForecast
+        model_object, model_name = select_forecasting_model(prepped_data, domain)
         app.logger.info(f"Selected model: {model_name}")
+
+        # The rest of your code works perfectly with either object type!
+        app.logger.info("Fitting model and generating forecast...")
+        model_object.fit(prepped_data)
+        forecast_df = model_object.predict(h=steps)
+        print(forecast_df)
+        # For MLForecast, the column name is the model name (e.g., 'LGBMRegressor')
+        # For StatsForecast, it's also the model name (e.g., 'AutoARIMA')
+        forecast_df.rename(columns={model_name: 'y'}, inplace=True)
+
+        app.logger.info("Calculating cross-validation accuracy...")
+        accuracy_results = calculate_cv_accuracy(
+            prepped_data,
+            model_object,
+            forecast_horizon=steps,
+            num_folds=2,
+            stride=1
+        )
+        expected_accuracy = round(accuracy_results['mape'], 3) if accuracy_results.get('mape') is not None else 'N/A'
         
-        app.logger.info(f"Generating forecast for {steps} steps")
-        forecast_df = forecast_function(prepped_data, forecast_steps=steps)
         app.logger.info(f"Forecast generated, shape: {forecast_df.shape}")
-        
         print(f"\n[DEBUG] Selected model: {model_name}")
         print(f"[DEBUG] Data length: {len(prepped_data)}")
         print(f"[DEBUG] Domain: {domain if domain else 'Not specified'}")
         print(f"[DEBUG] Forecast steps: {steps}\n")
-
         # Create an interactive Plot
         fig = go.Figure()
-        fig.add_trace(go.Scatter(x=df['dt'], y=df['value'], mode='lines', name='Original'))
-        fig.add_trace(go.Scatter(x=forecast_df['dt'], 
-                                y=forecast_df['value'], mode='lines', name='Forecast', line=dict(dash='dash')))
-        fig.update_layout(title='Forecast vs Original', xaxis_title='Index', yaxis_title='Value')
+        fig.add_trace(go.Scatter(x=prepped_data['ds'], y=prepped_data['y'], mode='lines', name='Original'))
+        fig.add_trace(go.Scatter(x=forecast_df['ds'], y=forecast_df['y'], mode='lines', name='Forecast', line=dict(dash='dash')))
+        fig.update_layout(title='Forecast vs Original', xaxis_title='Date', yaxis_title='y')
         
-        # predicted score on future data
-        base_forecast = baseline_forecast(prepped_data, forecast_steps=steps)
-        fig.add_trace(go.Scatter(x=base_forecast['dt'], 
-                                y=base_forecast['value'], mode='lines', name='Baseline Forecast', line=dict(dash='dash')))
+        # --- NEW BASELINE ACCURACY CALCULATION ---
+        app.logger.info("Calculating baseline accuracy...")
 
-        # Add config to hide the mode bar
-        config = {
-            'displayModeBar': False,  # Hides the toolbar completely
-        }
+        # 1. Get the baseline model object
+        baseline_model_object = get_baseline_model_object()
+
+        # 2. Pass the OBJECT to the accuracy function
+        baseline_accuracy_results = calculate_cv_accuracy(
+            prepped_data,
+            baseline_model_object, # Pass the object, NOT a function
+            forecast_horizon=steps,
+            num_folds=2,
+            stride=1
+        )
+        baseline_accuracy = round(baseline_accuracy_results['mape'], 3) if baseline_accuracy_results.get('mape') is not None else 'N/A'
+
+        # --- (Optional) Generate baseline plot data if needed ---
+        baseline_model_object.fit(prepped_data)
+        base_forecast_df = baseline_model_object.predict(h=steps)
+        base_forecast_df.rename(columns={'SeasonalNaive': 'value'}, inplace=True) # Rename for plotting
+
+        fig.add_trace(go.Scatter(x=base_forecast_df['ds'], y=base_forecast_df['value'], mode='lines', name='Baseline Forecast', line=dict(dash='dot')))
+        
+        config = {'displayModeBar': False}
         plot_html = fig.to_html(full_html=False, include_plotlyjs=False, config=config)
-
-        # Save forecast to S3
         forecast_filename = f"forecast_{filename}"
         if not save_dataframe_to_s3(forecast_df, forecast_filename):
             return "Error saving forecast file", 500
-        
-        expected_accuracy = round(calculate_cv_accuracy(
-            prepped_data,
-            forecast_function,
-            forecast_horizon=steps,
-            num_folds=2,
-            stride=1
-        )['mape'], 3)
-
-        baseline_accuracy = round(calculate_cv_accuracy(
-            prepped_data,
-            baseline_forecast,
-            forecast_horizon=steps,
-            num_folds=2,
-            stride=1
-        )['mape'], 3)
-        
-        # Clean up the processed file after rendering the template
         @after_this_request
         def cleanup(response):
             try:
-                # Delete the processed file from S3
                 delete_from_s3(filename)
                 print(f"[CLEANUP] Removed processed file: {filename}")
-                
-                # Delete the original file (removing 'processed_' prefix) if it exists
                 original_filename = filename.replace('processed_', '')
                 if original_filename != filename:
                     delete_from_s3(original_filename)
@@ -370,7 +392,6 @@ def forecast(filename):
     except Exception as e:
         app.logger.error(f"Exception during forecasting: {str(e)}", exc_info=True)
         return f"Error during forecasting: {str(e)}", 500
-
     return render_template('result.html', plot_html=plot_html, forecast_file=forecast_filename, expected_accuracy=expected_accuracy, baseline_accuracy=baseline_accuracy)
 
 @app.route('/download/<path:forecast_file>')
