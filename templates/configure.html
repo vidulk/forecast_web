@@ -97,12 +97,32 @@
                             Found this to be the probable date format but could be wrong so double check.
                             <br>Example: if your date is in the format "2023-10-01", enter "YYYY-MM-DD".
                             <br>For "01/10/2023", enter "DD/MM/YYYY".
-                            <br>For "10/01/2023", enter "MM/DD/YYYY".
-
                         </div>
                     </div>
                 </div>
-                
+
+                <div class="row mb-4">
+                    <div class="col-md-6">
+                        <label for="granularity" class="form-label">Forecasting Granularity:</label>
+                        <select name="granularity" id="granularity" class="form-control" required>
+                            <option value="hourly">Hourly</option>
+                            <option value="daily" selected>Daily</option>
+                            <option value="weekly">Weekly</option>
+                            <option value="monthly">Monthly</option>
+                        </select>
+                        <div class="form-text text-light example-text">
+                            Example: Choose 'Hourly' if your data is by hour, 'Daily' if by day, etc.
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <label for="seasonality" class="form-label">Seasonality Period:</label>
+                        <input type="number" name="seasonality" id="seasonality" class="form-control" min="1" value="7" required>
+                        <div class="form-text text-light example-text">
+                            Example: Enter 24 for daily seasonality in hourly data, 7 for weekly seasonality in daily data, 12 for yearly seasonality in monthly data, etc.
+                        </div>
+                    </div>
+                </div>
+
                 <div class="row mb-4">
                     <div class="col-md-6">
                         <label for="value_column" class="form-label">Target Column Name:</label>

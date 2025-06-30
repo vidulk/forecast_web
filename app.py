@@ -245,9 +245,13 @@ def process():
     date_format = request.form.get('date_format', 'DD/MM/YYYY')
     value_column = request.form.get('value_column', 'value')
     steps = request.form.get('steps', type=int, default=7)
+    granularity = request.form.get('granularity', 'daily')
+    seasonality = request.form.get('seasonality', type=int, default=7)
     
     if not steps or steps <= 0:
         return "Invalid timesteps value", 400
+    if not seasonality or seasonality <= 0:
+        return "Invalid seasonality value", 400
     
     try:
         df = read_from_s3(filename)
@@ -289,91 +293,86 @@ def process():
     # Delete the original temporary file
     delete_from_s3(filename)
     
-    # Now redirect to forecast with the processed file
-    return redirect(url_for('forecast', filename=processed_filename, steps=steps))
+    # Now redirect to forecast with the processed file and new params
+    return redirect(url_for('forecast', filename=processed_filename, steps=steps, granularity=granularity, seasonality=seasonality))
+
+def _prepare_data_from_s3(filename):
+    app.logger.info(f"Reading file from S3: {filename}")
+    df = read_from_s3(filename)
+    if df is None:
+        app.logger.error(f"Error reading processed file - returned None: {filename}")
+        return None
+    app.logger.info(f"Successfully read file, shape: {df.shape}")
+    app.logger.info("Cleaning column names")
+    df.columns = [str(c).strip().replace("=", "").replace("(", "").replace(")", "") for c in df.columns]
+    app.logger.info(f"Columns after cleaning: {df.columns.tolist()}")
+    app.logger.info("Preparing data for forecasting")
+    prepped_data = prepare_data(df.copy())
+    app.logger.info(f"Data prepared, length: {len(prepped_data)}")
+    return prepped_data
+
+def _generate_forecast_and_accuracy(prepped_data, steps, domain):
+    model_object, model_name = select_forecasting_model(prepped_data, domain)
+    app.logger.info(f"Selected model: {model_name}")
+    app.logger.info("Fitting model and generating forecast...")
+    model_object.fit(prepped_data)
+    forecast_df = model_object.predict(h=steps)
+    forecast_df.rename(columns={model_name: 'y'}, inplace=True)
+    app.logger.info("Calculating cross-validation accuracy...")
+    num_folds = 5 if len(prepped_data) >= steps * 5 else 2
+    app.logger.info(f"Using {num_folds} folds for cross-validation")
+    accuracy_results = calculate_cv_accuracy(
+        prepped_data,
+        model_object,
+        forecast_horizon=steps,
+        num_folds=num_folds,
+        stride=1
+    )
+    expected_accuracy = round(accuracy_results['mape'] * 100, 3) if accuracy_results.get('mape') is not None else 'N/A'
+    app.logger.info(f"Forecast generated, shape: {forecast_df.shape}")
+    print(f"\n[DEBUG] Selected model: {model_name}")
+    print(f"[DEBUG] Data length: {len(prepped_data)}")
+    print(f"[DEBUG] Domain: {domain if domain else 'Not specified'}")
+    print(f"[DEBUG] Forecast steps: {steps}\n")
+    return forecast_df, expected_accuracy
+
+def _generate_baseline_and_plot(prepped_data, steps, forecast_df):
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=prepped_data['ds'], y=prepped_data['y'], mode='lines', name='Original'))
+    fig.add_trace(go.Scatter(x=forecast_df['ds'], y=forecast_df['y'], mode='lines', name='Forecast', line=dict(dash='dash')))
+    fig.update_layout(title='Forecast vs Original', xaxis_title='Date', yaxis_title='y')
+    app.logger.info("Calculating baseline accuracy...")
+    baseline_model_object = get_baseline_model_object()
+    baseline_accuracy_results = calculate_cv_accuracy(
+        prepped_data,
+        baseline_model_object,
+        forecast_horizon=steps,
+        num_folds=2,
+        stride=1
+    )
+    baseline_accuracy = round(baseline_accuracy_results['mape'] * 100, 3) if baseline_accuracy_results.get('mape') is not None else 'N/A'
+    baseline_model_object.fit(prepped_data)
+    base_forecast_df = baseline_model_object.predict(h=steps)
+    base_forecast_df.rename(columns={'SeasonalNaive': 'value'}, inplace=True)
+    fig.add_trace(go.Scatter(x=base_forecast_df['ds'], y=base_forecast_df['value'], mode='lines', name='Baseline Forecast', line=dict(dash='dot')))
+    config = {'displayModeBar': False}
+    plot_html = fig.to_html(full_html=False, include_plotlyjs=False, config=config)
+    return plot_html, baseline_accuracy
 
 @app.route('/forecast/<filename>')
 def forecast(filename):
     steps = request.args.get('steps', default=10, type=int)
+    granularity = request.args.get('granularity', default='daily')
+    seasonality = request.args.get('seasonality', default=7, type=int)
     domain = request.args.get('domain', default=None)
-    app.logger.info(f"Starting forecast for file: {filename}, steps: {steps}, domain: {domain}")
+    app.logger.info(f"Starting forecast for file: {filename}, steps: {steps}, granularity: {granularity}, seasonality: {seasonality}, domain: {domain}")
     try:
-        app.logger.info(f"Reading file from S3: {filename}")
-        df = read_from_s3(filename)
-        if df is None:
-            app.logger.error(f"Error reading processed file - returned None: {filename}")
+        prepped_data = _prepare_data_from_s3(filename)
+        if prepped_data is None:
             return "Error reading processed file from storage", 500
-        app.logger.info(f"Successfully read file, shape: {df.shape}")
-    except Exception as e:
-        app.logger.error(f"Exception reading file from S3: {str(e)}", exc_info=True)
-        return f"Error reading processed file: {str(e)}", 500
-    try:
-        app.logger.info("Cleaning column names")
-        df.columns = [str(c).strip().replace("=", "").replace("(", "").replace(")", "") for c in df.columns]
-        app.logger.info(f"Columns after cleaning: {df.columns.tolist()}")
-        app.logger.info("Preparing data for forecasting")
-        prepped_data = prepare_data(df.copy())
-        app.logger.info(f"Data prepared, length: {len(prepped_data)}")
-
-        # This line now intelligently selects StatsForecast or MLForecast
-        model_object, model_name = select_forecasting_model(prepped_data, domain)
-        app.logger.info(f"Selected model: {model_name}")
-
-        # The rest of your code works perfectly with either object type!
-        app.logger.info("Fitting model and generating forecast...")
-        model_object.fit(prepped_data)
-        forecast_df = model_object.predict(h=steps)
-        print(forecast_df)
-        # For MLForecast, the column name is the model name (e.g., 'LGBMRegressor')
-        # For StatsForecast, it's also the model name (e.g., 'AutoARIMA')
-        forecast_df.rename(columns={model_name: 'y'}, inplace=True)
-
-        app.logger.info("Calculating cross-validation accuracy...")
-        accuracy_results = calculate_cv_accuracy(
-            prepped_data,
-            model_object,
-            forecast_horizon=steps,
-            num_folds=2,
-            stride=1
-        )
-        expected_accuracy = round(accuracy_results['mape'], 3) if accuracy_results.get('mape') is not None else 'N/A'
-        
-        app.logger.info(f"Forecast generated, shape: {forecast_df.shape}")
-        print(f"\n[DEBUG] Selected model: {model_name}")
-        print(f"[DEBUG] Data length: {len(prepped_data)}")
-        print(f"[DEBUG] Domain: {domain if domain else 'Not specified'}")
-        print(f"[DEBUG] Forecast steps: {steps}\n")
-        # Create an interactive Plot
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(x=prepped_data['ds'], y=prepped_data['y'], mode='lines', name='Original'))
-        fig.add_trace(go.Scatter(x=forecast_df['ds'], y=forecast_df['y'], mode='lines', name='Forecast', line=dict(dash='dash')))
-        fig.update_layout(title='Forecast vs Original', xaxis_title='Date', yaxis_title='y')
-        
-        # --- NEW BASELINE ACCURACY CALCULATION ---
-        app.logger.info("Calculating baseline accuracy...")
-
-        # 1. Get the baseline model object
-        baseline_model_object = get_baseline_model_object()
-
-        # 2. Pass the OBJECT to the accuracy function
-        baseline_accuracy_results = calculate_cv_accuracy(
-            prepped_data,
-            baseline_model_object, # Pass the object, NOT a function
-            forecast_horizon=steps,
-            num_folds=2,
-            stride=1
-        )
-        baseline_accuracy = round(baseline_accuracy_results['mape'], 3) if baseline_accuracy_results.get('mape') is not None else 'N/A'
-
-        # --- (Optional) Generate baseline plot data if needed ---
-        baseline_model_object.fit(prepped_data)
-        base_forecast_df = baseline_model_object.predict(h=steps)
-        base_forecast_df.rename(columns={'SeasonalNaive': 'value'}, inplace=True) # Rename for plotting
-
-        fig.add_trace(go.Scatter(x=base_forecast_df['ds'], y=base_forecast_df['value'], mode='lines', name='Baseline Forecast', line=dict(dash='dot')))
-        
-        config = {'displayModeBar': False}
-        plot_html = fig.to_html(full_html=False, include_plotlyjs=False, config=config)
+        # You can use granularity and seasonality in your model selection or forecasting logic as needed
+        forecast_df, expected_accuracy = _generate_forecast_and_accuracy(prepped_data, steps, domain)
+        plot_html, baseline_accuracy = _generate_baseline_and_plot(prepped_data, steps, forecast_df)
         forecast_filename = f"forecast_{filename}"
         if not save_dataframe_to_s3(forecast_df, forecast_filename):
             return "Error saving forecast file", 500
@@ -453,6 +452,16 @@ def cleanup_old_s3_files():
     except Exception as e:
         print(f"[ERROR] Error listing S3 objects: {e}")
 
+@app.errorhandler(Exception)
+def handle_exception(e):
+    """Handle all unhandled exceptions and log them properly"""
+    app.logger.error(f"Unhandled exception: {str(e)}", exc_info=True)
+    return f"An error occurred: {str(e)}", 500
+
+if __name__ == '__main__':
+    
+    cleanup_old_s3_files()  # Clean up old files on startup
+    app.run(debug=True)
 @app.errorhandler(Exception)
 def handle_exception(e):
     """Handle all unhandled exceptions and log them properly"""

@@ -38,7 +38,7 @@ def get_stats_forecasting_model(data):
     if n < 30:
         models = [SeasonalNaive(season_length=7)]
     elif n < 100:
-        models = [AutoETS(season_length=7)]
+        models = [AutoTheta()]
     else:
         models = [AutoARIMA()]
     
