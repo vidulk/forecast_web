@@ -108,13 +108,14 @@
         
         <!-- Moved the accuracy explanation text here -->
         <div class="accuracy-explanation">
-            <p>The expected accuracy is based on cross-validated historical data, while the baseline accuracy represents the average of the last 4 same days historically based on the training data.</p>
+            <p>The expected accuracy is based on model performance on the most recent historical data, 
+                the baseline accuracy is if you chose the value in the same period, for example, the same day last week if weekly.</p>
         </div>
     </div>
     
     <div class="accuracy-details">
         <h2>Accuracy Details</h2>
-        <p><strong>Expected Accuracy (Avg % Error):</strong> {{ expected_accuracy }}%</p>
+        <p><strong>Expected Model Accuracy (Avg % Error):</strong> {{ expected_accuracy }}%</p>
         <p><strong>Baseline Accuracy (Avg % Error):</strong> {{ baseline_accuracy }}%</p>
     </div>
     

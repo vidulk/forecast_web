@@ -54,6 +54,22 @@
             font-size: 0.9rem;
             color: #a0a0a0;
         }
+        .info-icon {
+            cursor: pointer;
+            color: #64b5f6;
+            margin-left: 5px;
+            font-weight: bold;
+        }
+        /* Custom Tooltip Styles */
+        .tooltip {
+            --bs-tooltip-bg: #161b22;
+            --bs-tooltip-color: #E0E0E0;
+            --bs-tooltip-opacity: 1;
+        }
+        .tooltip-inner {
+            font-family: 'Anonymous Pro', monospace;
+            border: 1px solid #64b5f6;
+        }
         @media (max-width: 768px) {
             .logo {
                 height: 40px;
@@ -90,36 +106,23 @@
                     </div>
                     
                     <div class="col-md-6">
-                        <label for="date_format" class="form-label">Date Format:</label>
-                        <input type="text" name="date_format" id="date_format" class="form-control" 
-                               value="{{ detected_format }}" placeholder="{{ detected_format }}" required>
-                        <div class="form-text text-light">
-                            Found this to be the probable date format but could be wrong so double check.
-                            <br>Example: if your date is in the format "2023-10-01", enter "YYYY-MM-DD".
-                            <br>For "01/10/2023", enter "DD/MM/YYYY".
-                        </div>
-                    </div>
-                </div>
-
-                <div class="row mb-4">
-                    <div class="col-md-6">
-                        <label for="granularity" class="form-label">Forecasting Granularity:</label>
-                        <select name="granularity" id="granularity" class="form-control" required>
-                            <option value="hourly">Hourly</option>
-                            <option value="daily" selected>Daily</option>
-                            <option value="weekly">Weekly</option>
-                            <option value="monthly">Monthly</option>
+                        <label for="date_format" class="form-label">Date Format:
+                            <span class="info-icon" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-html="true"
+                                  title="We've tried to detect the format, but please verify.">
+                                (?)
+                            </span>
+                        </label>
+                        <select name="date_format" id="date_format" class="form-control" required>
+                            <option value="YYYY-MM-DD" {% if detected_format == 'YYYY-MM-DD' %}selected{% endif %}>YYYY-MM-DD (e.g., 2023-04-25)</option>
+                            <option value="DD-MM-YYYY" {% if detected_format == 'DD-MM-YYYY' %}selected{% endif %}>DD-MM-YYYY (e.g., 25-04-2023)</option>
+                            <option value="MM/DD/YYYY" {% if detected_format == 'MM/DD/YYYY' %}selected{% endif %}>MM/DD/YYYY (e.g., 04/25/2023)</option>
+                            <option value="DD/MM/YYYY" {% if detected_format == 'DD/MM/YYYY' %}selected{% endif %}>DD/MM/YYYY (e.g., 25/04/2023)</option>
+                            <option value="YYYY/MM/DD" {% if detected_format == 'YYYY/MM/DD' %}selected{% endif %}>YYYY/MM/DD (e.g., 2023/04/25)</option>
+                            <option value="MM-DD-YYYY" {% if detected_format == 'MM-DD-YYYY' %}selected{% endif %}>MM-DD-YYYY (e.g., 04-25-2023)</option>
+                            <option value="DD/MM/YY" {% if detected_format == 'DD/MM/YY' %}selected{% endif %}>DD/MM/YY (e.g., 25/04/23)</option>
+                            <option value="MM/DD/YY" {% if detected_format == 'MM/DD/YY' %}selected{% endif %}>MM/DD/YY (e.g., 04/25/23)</option>
+                            <option value="YYYY-MM" {% if detected_format == 'YYYY-MM' %}selected{% endif %}>YYYY-MM (e.g., 2023-04)</option>
                         </select>
-                        <div class="form-text text-light example-text">
-                            Example: Choose 'Hourly' if your data is by hour, 'Daily' if by day, etc.
-                        </div>
-                    </div>
-                    <div class="col-md-6">
-                        <label for="seasonality" class="form-label">Seasonality Period:</label>
-                        <input type="number" name="seasonality" id="seasonality" class="form-control" min="1" value="7" required>
-                        <div class="form-text text-light example-text">
-                            Example: Enter 24 for daily seasonality in hourly data, 7 for weekly seasonality in daily data, 12 for yearly seasonality in monthly data, etc.
-                        </div>
                     </div>
                 </div>
 
@@ -131,13 +134,31 @@
                     </div>
                     
                     <div class="col-md-6">
-                        <label for="steps" class="form-label">Forecast Horizon (Steps Ahead):</label>
+                        <label for="steps" class="form-label">Forecast Horizon (Steps Ahead):
+                            <span class="info-icon" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-html="true"
+                                  title="The number of future periods to predict. <br>Example: For daily data, enter 7 to predict 7 days ahead.">
+                                (?)
+                            </span>
+                        </label>
                         <input type="number" name="steps" id="steps" class="form-control" 
                                min="1" value="10" required>
-                        <div class="form-text text-light example-text">
-                            Example: If your data is daily and you want to predict 7 days ahead, enter 7.
-                            <br>If monthly data and you want to predict 3 months ahead, enter 3.
-                        </div>
+                    </div>
+                </div>
+
+                <div class="row mb-4">
+                    <div class="col-md-12">
+                        <label for="granularity" class="form-label">Forecasting Granularity:
+                            <span class="info-icon" data-bs-toggle="tooltip" data-bs-placement="top"
+                                  title="The time interval of your data (e.g., Hourly, Daily, Weekly). We've tried to guess this for you.">
+                                (?)
+                            </span>
+                        </label>
+                        <select name="granularity" id="granularity" class="form-control" required>
+                            <option value="hourly" {% if detected_granularity == 'hourly' %}selected{% endif %}>Hourly</option>
+                            <option value="daily" {% if detected_granularity == 'daily' %}selected{% endif %}>Daily</option>
+                            <option value="weekly" {% if detected_granularity == 'weekly' %}selected{% endif %}>Weekly</option>
+                            <option value="monthly" {% if detected_granularity == 'monthly' %}selected{% endif %}>Monthly</option>
+                        </select>
                     </div>
                 </div>
                 
@@ -154,5 +175,12 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Initialize Bootstrap tooltips
+        var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
+        var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+          return new bootstrap.Tooltip(tooltipTriggerEl)
+        })
+    </script>
 </body>
 </html>

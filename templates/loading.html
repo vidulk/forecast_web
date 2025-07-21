@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Generating Forecast...</title>
+    <link rel="icon" href="{{ url_for('static', filename='full_logo.png') }}" type="image/png">
+    <link href="https://fonts.googleapis.com/css2?family=Anonymous+Pro&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            flex-direction: column;
+            background-color: #0E121A;
+            color: #E0E0E0;
+            font-family: 'Anonymous Pro', monospace;
+            text-align: center;
+            margin: 0;
+            padding: 0;
+        }
+        .loader {
+            border: 8px solid #161b22; /* Darker track for the loader */
+            border-radius: 50%;
+            border-top: 8px solid #64b5f6; /* Theme's blue color */
+            width: 80px;
+            height: 80px;
+            animation: spin 1.5s linear infinite;
+            margin-bottom: 20px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        h1 {
+            color: #FFFFFF;
+        }
+        p {
+            color: #E0E0E0;
+        }
+        .logo-container {
+            position: absolute;
+            top: 10px;
+            left: 20px;
+        }
+        .logo {
+            height: 60px;
+            width: auto;
+        }
+        @media (max-width: 768px) {
+            .logo {
+                height: 40px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="logo-container">
+        <img src="{{ url_for('static', filename='logo.png') }}" alt="Forecast App Logo" class="logo">
+    </div>
+
+    <div class="loader"></div>
+    <h1>Generating your forecast...</h1>
+    <p>This may take a moment. Please don't close this page or go back.</p>
+
+    <script>
+        document.addEventListener("DOMContentLoaded", function() {
+            // Construct the API URL, preserving query parameters from the original request
+            const queryString = window.location.search;
+            const url = `/api/forecast/{{ filename }}${queryString}`;
+            
+            fetch(url)
+                .then(response => {
+                    if (!response.ok) {
+                        // Try to get error message from response body
+                        return response.json().then(err => {
+                            throw new Error(err.error || 'Network response was not ok');
+                        });
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    if (data.result_url) {
+                        window.location.href = data.result_url;
+                    } else {
+                        // Handle case where result_url is not present
+                        document.body.innerHTML = '<h1>Error Generating Forecast</h1><p>' + (data.error || 'An unknown error occurred.') + '</p>';
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    document.body.innerHTML = '<h1>An Error Occurred</h1><p>Could not generate the forecast. Please check the logs or try again. <br><small>Error: ' + error.message + '</small></p>';
+                });
+        });
+    </script>
+</body>
+</html>

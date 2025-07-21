@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Configuration Error</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background-color: #282c34; /* Dark background */
+            color: #abb2bf; /* Light grey text */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+        .error-container {
+            text-align: center;
+            background-color: #21252b; /* Slightly lighter dark shade */
+            padding: 40px;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+            max-width: 500px;
+        }
+        h1 {
+            color: #61afef; /* A nice blue for dark themes */
+            font-size: 2em;
+            margin-bottom: 20px;
+        }
+        p {
+            font-size: 1.1em;
+            line-height: 1.6;
+            margin-bottom: 30px;
+        }
+        .btn {
+            display: inline-block;
+            padding: 12px 25px;
+            font-size: 1em;
+            font-weight: bold;
+            color: #282c34; /* Dark text on button */
+            background-color: rgb(87, 89, 91); /* Matching blue */
+            border: none;
+            border-radius: 5px;
+            text-decoration: none;
+            transition: background-color 0.3s ease;
+        }
+        .btn:hover {
+            background-color: #528baf; /* Darker blue on hover */
+        }
+    </style>
+</head>
+<body>
+    <div class="error-container">
+        <h1>Let's Double-Check That</h1>
+        <p>{{ message }}</p>
+        <a href="{{ url_for('configure', filename=filename) }}" class="btn">Go Back and Fix It</a>
+    </div>
+</body>
+</html>

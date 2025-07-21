@@ -4,6 +4,7 @@ from statsforecast.models import AutoARIMA, AutoETS, SeasonalNaive, AutoTheta
 from mlforecast import MLForecast
 import lightgbm as lgb # <--- Import a model like LightGBM
 from sklearn.metrics import mean_absolute_percentage_error
+from mlforecast.auto import AutoMLForecast
 
 def prepare_data(data):
     """
@@ -29,66 +30,62 @@ def prepare_data(data):
     data = data[['unique_id', 'ds', 'y']]
     return data
 
-def get_stats_forecasting_model(data):
+def get_stats_forecasting_model(data, season_length=7, granularity=1):
     """
     Selects and returns an appropriate StatsForecast model object.
     (This is your renamed get_forecasting_model function)
     """
     n = len(data)
-    if n < 30:
-        models = [SeasonalNaive(season_length=7)]
-    elif n < 100:
-        models = [AutoTheta()]
+    if n < 100:
+        models = [AutoTheta(season_length=season_length)]
     else:
-        models = [AutoARIMA()]
-    
-    model = StatsForecast(models=models, freq='D', n_jobs=1)
+        models = [AutoARIMA(season_length=season_length)]
+
+    model = StatsForecast(models=models, freq=granularity, n_jobs=1)
     return model
 
-def get_ml_forecasting_model(data):
+def get_ml_forecasting_model(data, season_length=7, granularity='D'):
     """
     Creates and returns an MLForecast model object.
     """
-    # Define the ML models you want to use (e.g., LightGBM)
+
     ml_models = [lgb.LGBMRegressor(random_state=0, n_estimators=100)]
     
-    # Create the MLForecast object, defining features like lags and date features
-    model = MLForecast(
+    model = AutoMLForecast(
         models=ml_models,
-        freq='D',
-        lags=[7, 14, 21],
-        date_features=['dayofweek', 'month', 'year'],
+        freq=granularity,
+        season_length=season_length,
+        n_jobs=1
     )
+        
     return model
 
-def select_forecasting_model(data, domain=None, return_name=True):
+def select_forecasting_model(data, domain=None, season_length=7, granularity='D'):
     """
     Main model selection logic. Chooses between statistical and ML models.
     """
     # Example logic: use ML for 'retail' domain, otherwise use statistical
     if domain == 'retail' and len(data) >= 50:
         print("Selecting MLForecast model.")
-        model_object = get_ml_forecasting_model(data)
+        model_object = get_ml_forecasting_model(data, season_length=season_length, granularity=granularity)
         # The model name is the class name of the first model in the list
         model_name = model_object.models[0].__class__.__name__
     else:
         print("Selecting StatsForecast model.")
-        model_object = get_stats_forecasting_model(data)
+        model_object = get_stats_forecasting_model(data, season_length=season_length, granularity=granularity)
         model_name = model_object.models[0].__class__.__name__
 
     return model_object, model_name
 
-# --- REFACTORED BASELINE LOGIC ---
-
-def get_baseline_model_object():
+def get_baseline_model_object(granularity='D'):
     """
     Creates and returns a StatsForecast object for the baseline model.
     This function now returns the object instead of a forecast.
     """
-    model = StatsForecast(models=[SeasonalNaive(season_length=7)], freq='D', n_jobs=1)
+    model = StatsForecast(models=[SeasonalNaive(season_length=7)], freq=granularity, n_jobs=1)
     return model
 
-def calculate_cv_accuracy(data, model_object, forecast_horizon=10, num_folds=3, stride=1):
+def calculate_cv_accuracy(data, model_object, forecast_horizon=10, num_folds=1, stride=1):
     """
     Calculates cross-validation accuracy. This function now works for
     both StatsForecast and MLForecast objects.
@@ -107,7 +104,7 @@ def calculate_cv_accuracy(data, model_object, forecast_horizon=10, num_folds=3, 
     # This logic needs to be robust for both library types
     if isinstance(model_object, StatsForecast):
         model_name_col = model_object.models[0].__class__.__name__
-    elif isinstance(model_object, MLForecast):
+    elif isinstance(model_object, (MLForecast, AutoMLForecast)):
         # For MLForecast, the column name is the model's class name directly
         model_name_col = model_object.models[0].__class__.__name__
     else:
@@ -118,7 +115,13 @@ def calculate_cv_accuracy(data, model_object, forecast_horizon=10, num_folds=3, 
     if cv_df.empty or model_name_col not in cv_df.columns:
         return {'mape': None}
 
-    mape = mean_absolute_percentage_error(cv_df['y'], cv_df[model_name_col])
+    sum_abs_error = (cv_df[model_name_col] - cv_df['y']).abs().sum()
+    sum_actuals = cv_df['y'].abs().sum()
+
+    if sum_actuals == 0:
+        return {'mape': float('inf')} # Avoid division by zero
+
+    mape = sum_abs_error / sum_actuals
     return {'mape': mape}
 
 def convert_date_format(user_format):
@@ -138,3 +141,45 @@ def convert_date_format(user_format):
         python_format = python_format.replace(user_code, python_code)
     
     return python_format
+
+import plotly.graph_objects as go
+
+def _generate_baseline_and_plot(prepped_data, steps, forecast_df, granularity):
+    """
+    Generates a plot for the forecast, baseline, and original data.
+    Also calculates the baseline accuracy.
+    """
+    # --- Calculate Baseline Forecast ---
+    baseline_model_object = get_baseline_model_object(granularity=granularity)
+    baseline_model_object.fit(prepped_data)
+    base_forecast_df = baseline_model_object.predict(h=steps)
+    base_forecast_df.rename(columns={'SeasonalNaive': 'value'}, inplace=True)
+        
+    # --- Create the Plot ---
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=prepped_data['ds'], y=prepped_data['y'], mode='lines', name='Original Data'))
+    fig.add_trace(go.Scatter(x=forecast_df['ds'], y=forecast_df['y'], mode='lines', name='Model Forecast', line=dict(dash='dash')))
+    fig.add_trace(go.Scatter(x=base_forecast_df['ds'], y=base_forecast_df['value'], mode='lines', name='Baseline Forecast', line=dict(dash='dot')))
+
+    fig.update_layout(
+        title_text='Forecast vs. Actuals',
+        xaxis_title='Date',
+        yaxis_title='Value',
+        height=500,
+    )
+
+    # --- Calculate Baseline Accuracy ---
+    baseline_accuracy_results = calculate_cv_accuracy(
+        data=prepped_data,
+        model_object=baseline_model_object,
+        forecast_horizon=steps,
+        num_folds=1,
+        stride=1
+    )
+    
+    baseline_mape = baseline_accuracy_results.get('mape')
+    baseline_accuracy = round(baseline_mape * 100, 3) if baseline_mape is not None else 'N/A'
+    
+    config = {'displayModeBar': False}
+    plot_html = fig.to_html(full_html=False, include_plotlyjs=False, config=config)
+    return plot_html, baseline_accuracy
