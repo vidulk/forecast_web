@@ -6,37 +6,18 @@ import lightgbm as lgb # <--- Import a model like LightGBM
 from sklearn.metrics import mean_absolute_percentage_error
 from mlforecast.auto import AutoMLForecast
 
-def prepare_data(data):
-    """
-    Prepares the data for time series modeling using statsforecast format.
-    Ensures 'ds' is a datetime column and converts to 'ds', 'y' to 'y', and adds 'unique_id'.
-    Args:
-        data (pd.DataFrame): Input DataFrame with 'ds' and 'y' columns.
-    Returns:
-        pd.DataFrame: DataFrame with columns ['unique_id', 'ds', 'y']
-    """
-    data = data.rename(columns={'time': 'ds', 'date': 'ds', 'datetime': 'ds', 'dt':'ds'})
-    data = data.rename(columns={'sales': 'y', 'rev': 'y', 'num_orders': 'y', 'orders': 'y', 'units_sold': 'y', 'units': 'y', 'revenue': 'y'})
-    if 'ds' not in data.columns or 'y' not in data.columns:
-        raise ValueError("DataFrame must contain 'ds' and 'y' columns.")
-    if len(data) < 7:
-        raise ValueError("DataFrame must contain at least seven rows of data.")
-    if len(data) > 1000000:
-        raise ValueError("DataFrame must contain less than 1,000,000 rows of data.")
-        
-    data = data.sort_values('ds')
-    data = data[['ds', 'y']].copy()
-    data['unique_id'] = 0
-    data = data[['unique_id', 'ds', 'y']]
-    return data
-
-def get_stats_forecasting_model(data, season_length=7, granularity=1):
+def get_stats_forecasting_model(data, season_length=7, granularity=1, force_arima=False):
     """
     Selects and returns an appropriate StatsForecast model object.
     (This is your renamed get_forecasting_model function)
     """
     n = len(data)
-    if n < 100:
+    
+    # If covariates are present, ARIMAX is a strong choice.
+    # If force_arima is true, we select it directly.
+    if force_arima:
+        models = [AutoARIMA(season_length=season_length)]
+    elif n < 100:
         models = [AutoTheta(season_length=season_length)]
     else:
         models = [AutoARIMA(season_length=season_length)]
@@ -60,15 +41,22 @@ def get_ml_forecasting_model(data, season_length=7, granularity='D'):
         
     return model
 
-def select_forecasting_model(data, domain=None, season_length=7, granularity='D'):
+def select_forecasting_model(data, domain=None, season_length=7, granularity='D', has_covariates=False):
     """
     Main model selection logic. Chooses between statistical and ML models.
+    If covariates are present, it defaults to AutoARIMA.
     """
-    # Example logic: use ML for 'retail' domain, otherwise use statistical
+    # If the user has explicitly chosen to use covariates, always select a model that supports them.
+    if has_covariates:
+        print("Covariates enabled by user. Selecting StatsForecast model (AutoARIMAX).")
+        model_object = get_stats_forecasting_model(data, season_length=season_length, granularity=granularity, force_arima=True)
+        model_name = "AutoARIMA"  # It acts as ARIMAX with exogenous features
+        return model_object, model_name
+
+    # Fallback to original logic if covariates are not explicitly enabled.
     if domain == 'retail' and len(data) >= 50:
         print("Selecting MLForecast model.")
         model_object = get_ml_forecasting_model(data, season_length=season_length, granularity=granularity)
-        # The model name is the class name of the first model in the list
         model_name = model_object.models[0].__class__.__name__
     else:
         print("Selecting StatsForecast model.")
@@ -85,35 +73,43 @@ def get_baseline_model_object(granularity='D'):
     model = StatsForecast(models=[SeasonalNaive(season_length=7)], freq=granularity, n_jobs=1)
     return model
 
-def calculate_cv_accuracy(data, model_object, forecast_horizon=10, num_folds=1, stride=1):
+def calculate_cv_accuracy(data=None, model_object=None, forecast_horizon=10, num_folds=1, stride=1, cv_df=None, model_name_col=None):
     """
-    Calculates cross-validation accuracy. This function now works for
-    both StatsForecast and MLForecast objects.
+    Calculates cross-validation accuracy.
+    Can either run cross-validation itself or use a pre-computed CV dataframe.
     """
-    cv_df = model_object.cross_validation(
-        df=data,
-        h=forecast_horizon,
-        step_size=stride,
-        n_windows=num_folds
-    )
+    # If a pre-computed cross-validation dataframe is not provided, run it.
+    if cv_df is None:
+        if data is None or model_object is None:
+            raise ValueError("Must provide either cv_df or (data and model_object).")
+        
+        cv_df = model_object.cross_validation(
+            df=data,
+            h=forecast_horizon,
+            step_size=stride,
+            n_windows=num_folds
+        )
 
     if cv_df.empty:
         return {'mape': None}
 
-    # Get the model name to find the forecast column
-    # This logic needs to be robust for both library types
-    if isinstance(model_object, StatsForecast):
-        model_name_col = model_object.models[0].__class__.__name__
-    elif isinstance(model_object, (MLForecast, AutoMLForecast)):
-        # For MLForecast, the column name is the model's class name directly
-        model_name_col = model_object.models[0].__class__.__name__
-    else:
-        # Fallback if something else is passed
-        return {'mape': None}
+    # Determine the name of the forecast column if not provided.
+    if model_name_col is None:
+        if isinstance(model_object, StatsForecast):
+            model_name_col = model_object.models[0].__class__.__name__
+        elif isinstance(model_object, (MLForecast, AutoMLForecast)):
+            model_name_col = model_object.models[0].__class__.__name__
+        else:
+            # Fallback if we can't determine the model name
+            return {'mape': None}
 
     cv_df.dropna(inplace=True)
     if cv_df.empty or model_name_col not in cv_df.columns:
-        return {'mape': None}
+        # If the auto-detected name is wrong (e.g., 'AutoARIMAX'), try the explicit one.
+        if model_name_col == 'AutoARIMA' and 'AutoARIMAX' in cv_df.columns:
+            model_name_col = 'AutoARIMAX'
+        else:
+            return {'mape': None}
 
     sum_abs_error = (cv_df[model_name_col] - cv_df['y']).abs().sum()
     sum_actuals = cv_df['y'].abs().sum()
@@ -124,23 +120,6 @@ def calculate_cv_accuracy(data, model_object, forecast_horizon=10, num_folds=1, 
     mape = sum_abs_error / sum_actuals
     return {'mape': mape}
 
-def convert_date_format(user_format):
-    """Convert user-friendly date format to Python's date format"""
-    # Common replacements
-    replacements = {
-        'DD': '%d',
-        'MM': '%m',
-        'YYYY': '%Y',
-        'YY': '%y',
-        'MON': '%b',
-        'MONTH': '%B'
-    }
-    
-    python_format = user_format
-    for user_code, python_code in replacements.items():
-        python_format = python_format.replace(user_code, python_code)
-    
-    return python_format
 
 import plotly.graph_objects as go
 

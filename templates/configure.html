@@ -70,6 +70,9 @@
             font-family: 'Anonymous Pro', monospace;
             border: 1px solid #64b5f6;
         }
+        .text-muted {
+            color: #adb5bd !important; /* Lighter muted color for dark background */
+        }
         @media (max-width: 768px) {
             .logo {
                 height: 40px;
@@ -161,7 +164,19 @@
                         </select>
                     </div>
                 </div>
-                
+
+                <div class="form-group">
+                    <div class="form-check">
+                        <input type="checkbox" class="form-check-input" id="use_covariates" name="use_covariates" onclick="toggleCovariates()">
+                        <label class="form-check-label" for="use_covariates">Use External Features</label>
+                    </div>
+                </div>
+
+                <div id="covariates-group" class="form-group" style="display: none;">
+                    <p class="text-muted small">Enter the names of the columns to use as additional features, separated by commas. These are variables that influence the forecast (e.g., holidays, price, promotions). Whatever you have on hand that you think could help improve the forecast.</p>
+                    <textarea id="covariate_columns" name="covariate_columns" class="form-control" rows="2">{{ guessed_covariates }}</textarea>
+                </div>
+
                 <button type="submit" class="btn btn-primary mt-3">Generate Forecast</button>
             </form>
             
@@ -181,6 +196,16 @@
         var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
           return new bootstrap.Tooltip(tooltipTriggerEl)
         })
+
+        function toggleCovariates() {
+            var checkbox = document.getElementById('use_covariates');
+            var covariatesGroup = document.getElementById('covariates-group');
+            if (checkbox.checked) {
+                covariatesGroup.style.display = 'block';
+            } else {
+                covariatesGroup.style.display = 'none';
+            }
+        }
     </script>
 </body>
 </html>
